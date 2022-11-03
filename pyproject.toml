@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "libvirt-instance"
+version = "0.1.0"
+description = "VM provisioning and management tool"
+authors = ["Sergej Alikov <sergej@alikov.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+  { include = "libvirt_instance", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+PyYAML = "^5.4.1"
+libvirt-python = "^8.0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.2.0"
+black = "^22.10.0"
+flake8 = "^5.0.4"
+isort = "^5.10.1"
+mypy = "^0.982"
+coverage = "^6.5.0"
+
+[tool.poetry.scripts]
+libvirt-instance = 'libvirt_instance.cli:main'
+
+[tool.isort]
+profile = "black"
+src_paths = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--import-mode=importlib",
+]
+
+[tool.coverage.run]
+source = ["src"]
+
+# TODO mypy
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
