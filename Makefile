@@ -10,7 +10,7 @@ lint:
 	poetry run flake8
 
 test:
-	poetry run coverage run -m pytest
+	poetry run coverage run -m pytest -vv
 	poetry run coverage report
 
 typecheck:
