@@ -7,7 +7,7 @@ from pathlib import Path
 import libvirt  # type: ignore
 
 from libvirt_instance import util
-from libvirt_instance.config import load_config
+from libvirt_instance.config import Config
 from libvirt_instance.domain import DomainDefinition, Volume
 
 logger = logging.getLogger(__name__)
@@ -137,31 +137,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def cmd_create(args: argparse.Namespace, config: dict):
-    cpu_model = args.cpu_model or config["defaults"].get("cpu-model", None)
-    arch_name = args.arch_name or config["defaults"].get("arch-name", None)
+def cmd_create(args: argparse.Namespace, config: Config):
+    cpu_model = args.cpu_model or config.get_defaults("cpu-model")
+    arch_name = args.arch_name or config.get_defaults("arch-name")
     if not arch_name:
         raise CliError("Please provide architecture name")
-    machine_type = args.machine_type or config["defaults"].get("machine-type", None)
+    machine_type = args.machine_type or config.get_defaults("machine-type")
     if not machine_type:
         raise CliError("Please provide machine type")
-    domain_type = args.domain_type or config["defaults"].get("domain-type", None)
+    domain_type = args.domain_type or config.get_defaults("domain-type")
     if not domain_type:
         raise CliError("Please provide domain type")
-    domain_preset = args.domain_preset or config["defaults"].get("domain-preset", None)
+    domain_preset = args.domain_preset or config.get_defaults("domain-preset")
     if not domain_preset:
         raise CliError("Please select a domain preset to base the VM on")
 
-    # Check if preset names are valid before performing any actions.
-    if domain_preset not in config["preset"]["domain"]:
-        raise CliError(f"Domain preset {domain_preset} not found in the config")
-    for preset_name, _, _ in args.disk:
-        if preset_name not in config["preset"]["disk"]:
-            raise CliError(f"Disk preset {preset_name} not found in the config")
+    # Resolve preset names in advance for implied validation.
+    disks = []
+    for i, (preset_name, disk_size, kwargs) in enumerate(args.disk):
+        preset = config.get_preset("disk", preset_name)
+        disks.append((i, preset, disk_size, kwargs))
 
-    for preset_name, _ in args.nic:
-        if preset_name not in config["preset"]["interface"]:
-            raise CliError(f"Interface preset {preset_name} not found in the config")
+    nics = []
+    for preset_name, kwargs in args.nic:
+        preset = config.get_preset("interface", preset_name)
+        nics.append((preset, kwargs))
 
     conn = libvirt.open(args.connect)
 
@@ -169,7 +169,7 @@ def cmd_create(args: argparse.Namespace, config: dict):
         args.name,
         ram_bytes=args.memory,
         vcpus=args.vcpu,
-        basexml=config["preset"]["domain"][domain_preset]["xml"],
+        basexml=config.get_preset("domain", args.domain_preset)["xml"],
         libvirt_conn=conn,
         domain_type=domain_type,
         machine=machine_type,
@@ -177,9 +177,7 @@ def cmd_create(args: argparse.Namespace, config: dict):
         cpu_model=cpu_model,
     )
 
-    for i, (preset_name, disk_size, kwargs) in enumerate(args.disk):
-        preset = config["preset"]["disk"][preset_name]
-
+    for i, preset, disk_size, kwargs in disks:
         v = Volume(
             f"{args.name}-disk{i}",
             create_size_bytes=disk_size,
@@ -194,9 +192,7 @@ def cmd_create(args: argparse.Namespace, config: dict):
             boot_order=kwargs.get("boot", None),
         )
 
-    for preset_name, kwargs in args.nic:
-        preset = config["preset"]["interface"][preset_name]
-
+    for preset, kwargs in nics:
         if "network" in preset:
             d.add_network_interface(
                 preset["network"],
@@ -223,7 +219,11 @@ def main() -> None:
 
     logging.basicConfig(level=args.log_level)
 
-    config = load_config(args.config_file)
+    if args.config_file.exists():
+        with open(args.config_file, "r") as f:
+            config = Config(f)
+    else:
+        config = Config()
 
     try:
         if args.command == "version":

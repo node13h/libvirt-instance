@@ -21,6 +21,7 @@ flake8 = "^5.0.4"
 isort = "^5.10.1"
 mypy = "^0.982"
 coverage = "^6.5.0"
+types-PyYAML = "^6.0.12"
 
 [tool.poetry.scripts]
 libvirt-instance = 'libvirt_instance.cli:main'

@@ -259,6 +259,14 @@ optional = false
 python-versions = ">=3.7"
 
 [[package]]
+name = "types-pyyaml"
+version = "6.0.12.2"
+description = "Typing stubs for PyYAML"
+category = "dev"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "typing-extensions"
 version = "4.4.0"
 description = "Backported and Experimental Type Hints for Python 3.7+"
@@ -269,7 +277,7 @@ python-versions = ">=3.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "6929cc2e1fd38253c52397c3965c8711ea8bf177bc966955a79b701a68da6957"
+content-hash = "c1a27ef509391600a8b0a51c2fe47ffeba79ef63f30f426bc0ebd9f95e8809da"
 
 [metadata.files]
 attrs = []
@@ -295,4 +303,8 @@ pyparsing = []
 pytest = []
 pyyaml = []
 tomli = []
+types-pyyaml = [
+    {file = "types-PyYAML-6.0.12.2.tar.gz", hash = "sha256:6840819871c92deebe6a2067fb800c11b8a063632eb4e3e755914e7ab3604e83"},
+    {file = "types_PyYAML-6.0.12.2-py3-none-any.whl", hash = "sha256:1e94e80aafee07a7e798addb2a320e32956a373f376655128ae20637adb2655b"},
+]
 typing-extensions = []
