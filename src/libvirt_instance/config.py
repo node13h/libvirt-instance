@@ -1,5 +1,4 @@
 import importlib.resources
-from pathlib import Path
 from typing import Optional, TextIO
 
 import yaml

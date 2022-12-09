@@ -251,7 +251,7 @@ def test_domain_init_domain_type_specific_machine_wrong_domain_type(libvirt_conn
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
-        d = domain.DomainDefinition(
+        domain.DomainDefinition(
             "foo",
             ram_bytes=16777216,
             vcpus=1,
@@ -286,7 +286,7 @@ def test_domain_init_unsupported_domain_type(libvirt_conn_dir):
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
-        d = domain.DomainDefinition(
+        domain.DomainDefinition(
             "foo",
             ram_bytes=16777216,
             vcpus=1,
@@ -370,7 +370,7 @@ def test_domain_init_unsupported_arch(libvirt_conn_dir):
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
-        d = domain.DomainDefinition(
+        domain.DomainDefinition(
             "foo",
             ram_bytes=16777216,
             vcpus=1,
@@ -386,7 +386,7 @@ def test_domain_init_unsupported_machine(libvirt_conn_dir):
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
-        d = domain.DomainDefinition(
+        domain.DomainDefinition(
             "foo",
             ram_bytes=16777216,
             vcpus=1,

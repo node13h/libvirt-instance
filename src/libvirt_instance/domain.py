@@ -126,8 +126,6 @@ class DomainDefinition:
 
         self._domain_el.set("type", domain_type)
 
-        domain_arch_name: str
-
         if arch_name is None:
             arch_el = self._caps_el.find("./host/cpu/arch")
             if arch_el is not None:
@@ -196,7 +194,7 @@ class DomainDefinition:
         return ET.tostring(self._domain_el, encoding="unicode")
 
     def _get_emulator(self, domain_type, arch_name, machine) -> str:
-        guest_caps_els = self._caps_el.findall(f"./guest")
+        guest_caps_els = self._caps_el.findall("./guest")
 
         if guest_caps_els is None:
             raise RuntimeError("No guest capabilities found.")
@@ -277,7 +275,7 @@ class DomainDefinition:
         existing_disk_els = []
         existing_target_devices = []
 
-        for e_disk_el in self._devices_el.findall(f"./disk"):
+        for e_disk_el in self._devices_el.findall("./disk"):
 
             target_el = e_disk_el.find("./target")
             if target_el is None:

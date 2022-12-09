@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command", help="sub-command help")
 
-    parser_version = subparsers.add_parser("version", help="show version")
+    subparsers.add_parser("version", help="show version")
 
     parser_create = subparsers.add_parser("create", help="create a VM")
 

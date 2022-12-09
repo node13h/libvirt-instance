@@ -1,4 +1,4 @@
-.PHONY: reformat lint test typecheck build
+.PHONY: reformat lint test typecheck all-tests build
 
 reformat:
 	poetry run black .
@@ -7,7 +7,7 @@ reformat:
 lint:
 	poetry run isort --check .
 	poetry run black --check .
-	poetry run flake8
+	poetry run flake8 --extend-ignore=E501
 
 test:
 	poetry run coverage run -m pytest -vv
@@ -15,6 +15,8 @@ test:
 
 typecheck:
 	poetry run mypy .
+
+all-tests: lint typecheck test
 
 build:
 	poetry build
