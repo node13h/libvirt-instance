@@ -1,4 +1,3 @@
-import pathlib
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -24,10 +23,6 @@ DISK_BUS_PROPERTIES: dict[str, DiskBusProperties] = {
 
 
 class InvalidBaseXmlError(Exception):
-    pass
-
-
-class UnsupportedPoolTypeError(Exception):
     pass
 
 
@@ -62,42 +57,28 @@ class Volume:
 
         self.pool_type = pool_el.get("type")
 
-        if self.pool_type == "dir":
-            if name in set(self.pool.listVolumes()):
-                if not exist_ok:
-                    raise VolumeAlreadyExistsError(
-                        f"Volume {name} already exists in the {pool_name} pool."
-                    )
-
-                self.volume = self.pool.storageVolLookupByName(name)
-            else:
-                volume_el = ET.Element("volume")
-                volume_el.set("type", "file")
-
-                ET.SubElement(volume_el, "name").text = name
-                capacity_el = ET.SubElement(volume_el, "capacity")
-                capacity_el.set("unit", "bytes")
-                capacity_el.text = str(create_size_bytes)
-
-                allocation_el = ET.SubElement(volume_el, "allocation")
-                allocation_el.set("unit", "bytes")
-                allocation_el.text = str(create_size_bytes)
-
-                pool_target_path = pool_el.find("./target/path")
-                if pool_target_path is not None and pool_target_path.text is not None:
-                    vol_path = pathlib.Path(pool_target_path.text).joinpath(name)
-                else:
-                    raise RuntimeError(
-                        f"Invalid pool {pool_name} - missing target/path."
-                    )
-
-                target_el = ET.SubElement(volume_el, "target")
-                ET.SubElement(target_el, "path").text = str(vol_path)
-                ET.SubElement(target_el, "format").set("type", "raw")
-
-                self.volume = self.pool.createXML(
-                    ET.tostring(volume_el, encoding="unicode")
+        if name in set(self.pool.listVolumes()):
+            if not exist_ok:
+                raise VolumeAlreadyExistsError(
+                    f"Volume {name} already exists in the {pool_name} pool."
                 )
+
+            self.volume = self.pool.storageVolLookupByName(name)
+        else:
+            volume_el = ET.Element("volume")
+
+            ET.SubElement(volume_el, "name").text = name
+            capacity_el = ET.SubElement(volume_el, "capacity")
+            capacity_el.set("unit", "bytes")
+            capacity_el.text = str(create_size_bytes)
+
+            allocation_el = ET.SubElement(volume_el, "allocation")
+            allocation_el.set("unit", "bytes")
+            allocation_el.text = str(create_size_bytes)
+
+            self.volume = self.pool.createXML(
+                ET.tostring(volume_el, encoding="unicode")
+            )
 
 
 class DomainDefinition:
@@ -254,6 +235,94 @@ class DomainDefinition:
     def define(self):
         self._conn.defineXML(str(self))
 
+    def _used_scsi_addresses(self) -> dict[int, dict[int, dict[int, set]]]:
+        used_addresses: dict[int, dict[int, dict[int, set]]] = {}
+
+        for disk_el in self._devices_el.findall("./disk/target[@bus='scsi']/.."):
+
+            address_el = disk_el.find("./address[@type='drive']")
+            if address_el is None:
+                raise RuntimeError("SCSI disk is missing an address attribute")
+
+            controller_attr = address_el.get("controller")
+            if controller_attr is None:
+                raise RuntimeError(
+                    "SCSI disk address is missing a controller attribute"
+                )
+            controller = int(controller_attr)
+
+            bus_attr = address_el.get("bus")
+            if bus_attr is None:
+                raise RuntimeError("SCSI disk address is missing a bus attribute")
+            bus = int(bus_attr)
+
+            target_attr = address_el.get("target")
+            if target_attr is None:
+                raise RuntimeError("SCSI disk address is missing a target attribute")
+            target = int(target_attr)
+
+            unit_attr = address_el.get("unit")
+            if unit_attr is None:
+                raise RuntimeError("SCSI disk address is missing a unit attribute")
+            unit = int(unit_attr)
+
+            if controller not in used_addresses:
+                used_addresses[controller] = {}
+
+            if bus not in used_addresses[controller]:
+                used_addresses[controller][bus] = {}
+
+            if target not in used_addresses[controller][bus]:
+                used_addresses[controller][bus][target] = set()
+
+            used_addresses[controller][bus][target].add(unit)
+
+        return used_addresses
+
+    def _allocate_scsi_address(self) -> tuple[int, int, int, int]:
+
+        used_addresses = self._used_scsi_addresses()
+
+        controller_els = self._devices_el.findall(
+            "./controller[@type='scsi'][@model='virtio-scsi']"
+        )
+
+        # bus is limited to a single 0
+        bus = 0
+
+        for controller_el in controller_els:
+            index_attr = controller_el.get("index") or "0"
+            controller = int(index_attr)
+            for target in range(256):
+                for unit in range(16384):
+                    if unit not in used_addresses.get(controller, {}).get(bus, {}).get(
+                        target, set()
+                    ):
+                        break
+                else:
+                    continue
+
+                break
+            else:
+                continue
+
+            break
+        else:  # No room found on existing controllers.
+            if len(controller_els) < 32:
+                controller = len(controller_els)
+                controller_el = ET.SubElement(self._devices_el, "controller")
+                controller_el.set("type", "scsi")
+                controller_el.set("model", "virtio-scsi")
+                controller_el.set("index", str(controller))
+                target = 0
+                unit = 0
+            else:
+                # 256 * 16384 = 4194304, yeah, right :)
+                raise RuntimeError("All available SCSI controllers are full.")
+
+        return controller, bus, target, unit
+
+    # TODO: Function too long, needs refactor.
     def add_disk(
         self,
         volume: Volume,
@@ -269,128 +338,82 @@ class DomainDefinition:
         except KeyError:
             raise UnsupportedBusError(f"Unsupported bus {bus}")
 
+        disk_el = ET.Element("disk")
+
+        if volume.pool_type == "dir":
+            disk_el.set("type", "volume")
+            disk_el.set("device", "disk")
+
+            source_el = ET.SubElement(disk_el, "source")
+            source_el.set("pool", volume.pool.name())
+            source_el.set("volume", volume.volume.name())
+        elif volume.pool_type == "rbd":
+            disk_el.set("type", "network")
+            disk_el.set("device", "disk")
+
+            pool_el = ET.fromstring(volume.pool.XMLDesc())
+            volume_el = ET.fromstring(volume.volume.XMLDesc())
+
+            volume_path_el = volume_el.find("./target/path")
+            if volume_path_el is not None:
+                path = volume_path_el.text
+            else:
+                path = None
+
+            if path is None:
+                raise RuntimeError(
+                    "Volume {} is missing path".format(volume.volume.name())
+                )
+
+            source_el = ET.SubElement(disk_el, "source")
+            source_el.set("protocol", "rbd")
+            source_el.set("name", path)
+
+            for host_el in pool_el.findall("./source/host"):
+                name = host_el.get("name")
+                port = host_el.get("port")
+
+                if name is not None:
+                    source_host_el = ET.SubElement(source_el, "host")
+                    source_host_el.set("name", name)
+                    if port is not None:
+                        source_host_el.set("port", port)
+
+            pool_source_auth_el = pool_el.find("./source/auth[@type='ceph']")
+            if pool_source_auth_el is not None:
+                auth_username = pool_source_auth_el.get("username")
+
+                pool_source_auth_secret_el = pool_source_auth_el.find("./secret")
+                if pool_source_auth_secret_el is not None:
+                    auth_secret_uuid = pool_source_auth_secret_el.get("uuid")
+                else:
+                    auth_secret_uuid = None
+
+                if auth_username and auth_secret_uuid:
+                    auth_el = ET.SubElement(source_el, "auth")
+                    auth_el.set("username", auth_username)
+                    auth_secret_el = ET.SubElement(auth_el, "secret")
+                    auth_secret_el.set("type", "ceph")
+                    auth_secret_el.set("uuid", auth_secret_uuid)
+
+        else:
+            raise UnsupportedVolumeTypeError()
+
         dev_prefix = bus_type_properties["dev_prefix"]
         max_nr = bus_type_properties["max_nr"]
 
-        existing_disk_els = []
         existing_target_devices = []
 
-        for e_disk_el in self._devices_el.findall("./disk"):
-
-            target_el = e_disk_el.find("./target")
-            if target_el is None:
-                continue
+        for target_el in self._devices_el.findall(f"./disk/target[@bus='{bus}']"):
 
             target_dev = target_el.get("dev")
             if target_dev is None:
                 continue
 
-            target_bus = target_el.get("bus")
+            if not target_dev.startswith(dev_prefix):
+                continue
 
-            if target_bus is not None:
-                if target_bus != bus:
-                    continue
-            else:
-                if not target_dev.startswith(dev_prefix):
-                    continue
-
-            existing_disk_els.append(e_disk_el)
             existing_target_devices.append(target_dev)
-
-        if bus == DISK_BUS_SCSI:
-
-            existing_addresses: dict[int, dict[int, dict[int, set]]] = {}
-            for e_disk_el in existing_disk_els:
-
-                e_address_el = e_disk_el.find("./address[@type='drive']")
-                if e_address_el is None:
-                    raise RuntimeError("SCSI disk is missing the address attribute")
-
-                controller_attr = e_address_el.get("controller")
-                if controller_attr is None:
-                    raise RuntimeError(
-                        "SCSI disk address is missing the controller attribute"
-                    )
-                e_scsi_controller = int(controller_attr)
-
-                bus_attr = e_address_el.get("bus")
-                if bus_attr is None:
-                    raise RuntimeError("SCSI disk address is missing the bus attribute")
-                e_scsi_bus = int(bus_attr)
-
-                target_attr = e_address_el.get("target")
-                if target_attr is None:
-                    raise RuntimeError(
-                        "SCSI disk address is missing the target attribute"
-                    )
-                e_scsi_target = int(target_attr)
-
-                unit_attr = e_address_el.get("unit")
-                if unit_attr is None:
-                    raise RuntimeError(
-                        "SCSI disk address is missing the unit attribute"
-                    )
-                e_scsi_unit = int(unit_attr)
-
-                if e_scsi_controller not in existing_addresses:
-                    existing_addresses[e_scsi_controller] = {}
-
-                if e_scsi_bus not in existing_addresses[e_scsi_controller]:
-                    existing_addresses[e_scsi_controller][e_scsi_bus] = {}
-
-                if (
-                    e_scsi_target
-                    not in existing_addresses[e_scsi_controller][e_scsi_bus]
-                ):
-                    existing_addresses[e_scsi_controller][e_scsi_bus][
-                        e_scsi_target
-                    ] = set()
-
-                existing_addresses[e_scsi_controller][e_scsi_bus][e_scsi_target].add(
-                    e_scsi_unit
-                )
-
-            controller_els = self._devices_el.findall(
-                "./controller[@type='scsi'][@model='virtio-scsi']"
-            )
-
-            need_new_controller = False
-
-            # bus is limited to a single 0
-            scsi_bus = 0
-
-            for controller_el in controller_els:
-                index_attr = controller_el.get("index") or "0"
-                scsi_controller = int(index_attr)
-                for scsi_target in range(256):
-                    for scsi_unit in range(16384):
-                        if scsi_unit not in existing_addresses.get(
-                            scsi_controller, {}
-                        ).get(scsi_bus, {}).get(scsi_target, set()):
-                            break
-                    else:
-                        continue
-
-                    break
-                else:
-                    continue
-
-                break
-            else:
-                if len(controller_els) < 32:
-                    need_new_controller = True
-                    scsi_controller = len(controller_els)
-                else:
-                    # 256 * 16384 = 4194304, yeah, right :)
-                    raise RuntimeError("All available SCSI controllers are full.")
-
-            if need_new_controller:
-                controller_el = ET.SubElement(self._devices_el, "controller")
-                controller_el.set("type", "scsi")
-                controller_el.set("model", "virtio-scsi")
-                controller_el.set("index", str(scsi_controller))
-                scsi_target = 0
-                scsi_unit = 0
 
         for dev_nr in range(max_nr):
             drive_name = index_to_drive_name(dev_nr)
@@ -405,43 +428,38 @@ class DomainDefinition:
                 f"All of {max_nr} possible disk devices are already used on the {bus} bus."
             )
 
-        if volume.pool_type == "dir":
-            disk_el = ET.SubElement(self._devices_el, "disk")
+        target_el = ET.SubElement(disk_el, "target")
+        target_el.set("dev", dev)
+        target_el.set("bus", bus)
 
-            disk_el.set("type", "volume")
-            disk_el.set("device", "disk")
+        driver_el = ET.SubElement(disk_el, "driver")
+        driver_el.set("name", "qemu")
+        driver_el.set("type", "raw")
+        driver_el.set("cache", cache)
+        if discard is not None:
+            driver_el.set("discard", discard)
 
-            source_el = ET.SubElement(disk_el, "source")
-            source_el.set("pool", volume.pool.name())
-            source_el.set("volume", volume.volume.name())
+        if boot_order is not None:
+            boot_el = ET.SubElement(disk_el, "boot")
+            boot_el.set("order", str(boot_order))
 
-            target_el = ET.SubElement(disk_el, "target")
-            target_el.set("dev", dev)
-            target_el.set("bus", bus)
-
-            driver_el = ET.SubElement(disk_el, "driver")
-            driver_el.set("name", "qemu")
-            driver_el.set("type", "raw")
-            driver_el.set("cache", cache)
-            if discard is not None:
-                driver_el.set("discard", discard)
-
-            if boot_order is not None:
-                boot_el = ET.SubElement(disk_el, "boot")
-                boot_el.set("order", str(boot_order))
-
-            if bus == DISK_BUS_SCSI:
-                address_el = ET.SubElement(disk_el, "address")
-                address_el.set("type", "drive")
-                address_el.set("controller", str(scsi_controller))
-                address_el.set("bus", str(scsi_bus))
-                address_el.set("target", str(scsi_target))
-                address_el.set("unit", str(scsi_unit))
-
-        else:
-            raise UnsupportedVolumeTypeError()
+        if bus == DISK_BUS_SCSI:
+            (
+                scsi_controller,
+                scsi_bus,
+                scsi_target,
+                scsi_unit,
+            ) = self._allocate_scsi_address()
+            address_el = ET.SubElement(disk_el, "address")
+            address_el.set("type", "drive")
+            address_el.set("controller", str(scsi_controller))
+            address_el.set("bus", str(scsi_bus))
+            address_el.set("target", str(scsi_target))
+            address_el.set("unit", str(scsi_unit))
 
         # TODO: Autogenerate disk serial numbers?
+
+        self._devices_el.append(disk_el)
 
     def _add_generic_interface(
         self,

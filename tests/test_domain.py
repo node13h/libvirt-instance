@@ -6,10 +6,8 @@ import pytest
 from libvirt_instance import domain
 
 
-@pytest.fixture
-def libvirt_conn_dir():
+def libvirt_conn_base():
     conn = MagicMock()
-    conn.storagePoolLookupByName = mock_storagePoolLookupByName
     conn.getCapabilities.return_value = """
 <capabilities>
   <host>
@@ -48,7 +46,7 @@ def libvirt_conn_dir():
     return conn
 
 
-def mock_storageVolLookupByName(vol_name):
+def mock_dir_storageVolLookupByName(vol_name):
     vol = MagicMock()
     vol.name.return_value = vol_name
     vol.XMLDesc.return_value = f"""
@@ -80,15 +78,15 @@ def mock_storageVolLookupByName(vol_name):
     return vol
 
 
-def mock_pool_createXML(xml):
+def mock_dir_pool_createXML(xml):
     pool = ET.fromstring(xml)
 
     vol_name = pool.find("./name").text
 
-    return mock_storageVolLookupByName(vol_name)
+    return mock_dir_storageVolLookupByName(vol_name)
 
 
-def mock_storagePoolLookupByName(pool_name):
+def mock_dir_storagePoolLookupByName(pool_name):
     pool = MagicMock()
     pool.XMLDesc.return_value = f"""
 <pool type='dir'>
@@ -112,11 +110,83 @@ def mock_storagePoolLookupByName(pool_name):
 """
     pool.listVolumes.return_value = ["testvolume2", "testvolume3"]
 
-    pool.storageVolLookupByName = mock_storageVolLookupByName
+    pool.storageVolLookupByName = mock_dir_storageVolLookupByName
     pool.name.return_value = pool_name
-    pool.createXML = mock_pool_createXML
+    pool.createXML = mock_dir_pool_createXML
 
     return pool
+
+
+@pytest.fixture
+def libvirt_conn_dir():
+    conn = libvirt_conn_base()
+    conn.storagePoolLookupByName = mock_dir_storagePoolLookupByName
+
+    return conn
+
+
+def mock_rbd_storageVolLookupByName(vol_name):
+    vol = MagicMock()
+    vol.name.return_value = vol_name
+    vol.XMLDesc.return_value = f"""
+<volume type='network'>
+  <name>{vol_name}</name>
+  <key>rbd1/{vol_name}</key>
+  <capacity unit='bytes'>17179869184</capacity>
+  <allocation unit='bytes'>17179869184</allocation>
+  <target>
+    <path>rbd1/{vol_name}</path>
+    <format type='raw'/>
+  </target>
+</volume>
+ """
+
+    return vol
+
+
+def mock_rbd_pool_createXML(xml):
+    pool = ET.fromstring(xml)
+
+    vol_name = pool.find("./name").text
+
+    return mock_rbd_storageVolLookupByName(vol_name)
+
+
+def mock_rbd_storagePoolLookupByName(pool_name):
+    pool = MagicMock()
+    pool.XMLDesc.return_value = f"""
+<pool type='rbd'>
+  <name>{pool_name}</name>
+  <uuid>20ad2b50-50a9-4423-8eaa-72b481947da9</uuid>
+  <capacity unit='bytes'>101779903610880</capacity>
+  <allocation unit='bytes'>12070043725569</allocation>
+  <available unit='bytes'>65141153693696</available>
+  <source>
+    <host name='mon1'/>
+    <host name='mon2'/>
+    <host name='mon3'/>
+    <name>rbd</name>
+    <auth type='ceph' username='libvirt'>
+      <secret uuid='89890794-6310-4e93-81a1-0d37d601ab78'/>
+    </auth>
+  </source>
+</pool>
+"""
+    pool.listVolumes.return_value = ["testvolume2", "testvolume3"]
+
+    pool.storageVolLookupByName = mock_rbd_storageVolLookupByName
+    pool.name.return_value = pool_name
+    pool.createXML = mock_rbd_pool_createXML
+
+    return pool
+
+
+@pytest.fixture
+def libvirt_conn_rbd():
+    conn = libvirt_conn_base()
+    conn.storagePoolLookupByName = mock_rbd_storagePoolLookupByName
+
+    return conn
 
 
 def test_volume(libvirt_conn_dir):
@@ -424,6 +494,9 @@ def test_domain_add_disk_virtio_blk(libvirt_conn_dir):
 
     assert disk_el is not None
 
+    assert disk_el.get("type") == "volume"
+    assert disk_el.get("device") == "disk"
+
     assert disk_el.find("./boot") is None
 
     assert disk_el.find("./target").get("dev") == "vda"
@@ -692,6 +765,67 @@ def test_domain_add_disk_unsupported_bus(libvirt_conn_dir):
 
     with pytest.raises(domain.UnsupportedBusError):
         d.add_disk(v, bus="UNSUPPORTED BUS")
+
+
+def test_domain_add_disk_unsupported_volume_type(libvirt_conn_dir):
+    domainxml = "<domain></domain>"
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=libvirt_conn_dir,
+        basexml=domainxml,
+    )
+
+    v = MagicMock()
+    v.pool_type = "UNSUPPORTED"
+
+    with pytest.raises(domain.UnsupportedVolumeTypeError):
+        d.add_disk(v)
+
+
+def test_domain_add_disk_rbd(libvirt_conn_rbd):
+    domainxml = "<domain></domain>"
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=libvirt_conn_rbd,
+        basexml=domainxml,
+    )
+
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=libvirt_conn_rbd,
+        pool_name="testpool",
+    )
+
+    d.add_disk(v)
+
+    domain_el = ET.fromstring(str(d))
+
+    disk_el = domain_el.find("./devices/disk")
+    source_el = disk_el.find("./source")
+    source_host_els = source_el.findall("./host")
+    auth_el = source_el.find("./auth")
+    auth_secret_el = auth_el.find("./secret")
+
+    assert disk_el is not None
+
+    assert disk_el.get("type") == "network"
+    assert disk_el.get("device") == "disk"
+
+    assert source_el.get("protocol") == "rbd"
+    assert source_el.get("name") == "rbd1/testvolume"
+
+    assert auth_el.get("username") == "libvirt"
+    assert auth_secret_el.get("type") == "ceph"
+    assert auth_secret_el.get("uuid") == "89890794-6310-4e93-81a1-0d37d601ab78"
+
+    assert {h.get("name") for h in source_host_els} == {"mon1", "mon2", "mon3"}
 
 
 def test_domain_add_bridge_interface(libvirt_conn_dir):
