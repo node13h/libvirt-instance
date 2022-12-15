@@ -183,6 +183,8 @@ def cmd_create(args: argparse.Namespace, config: Config):
             create_size_bytes=disk_size,
             libvirt_conn=conn,
             pool_name=preset["pool"],
+            source_name=kwargs.get("src", None),
+            source_pool_name=kwargs.get("src-pool", None),
         )
 
         d.add_disk(

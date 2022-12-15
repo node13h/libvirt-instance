@@ -38,6 +38,10 @@ class VolumeAlreadyExistsError(Exception):
     pass
 
 
+class SourceVolumeTooBigError(Exception):
+    pass
+
+
 class Volume:
     def __init__(
         self,
@@ -47,6 +51,8 @@ class Volume:
         pool_name: str,
         exist_ok: bool = False,
         libvirt_conn: libvirt.virConnect,
+        source_pool_name: Optional[str] = None,
+        source_name: Optional[str] = None,
     ) -> None:
 
         self.name = name
@@ -68,17 +74,41 @@ class Volume:
             volume_el = ET.Element("volume")
 
             ET.SubElement(volume_el, "name").text = name
-            capacity_el = ET.SubElement(volume_el, "capacity")
-            capacity_el.set("unit", "bytes")
-            capacity_el.text = str(create_size_bytes)
 
-            allocation_el = ET.SubElement(volume_el, "allocation")
-            allocation_el.set("unit", "bytes")
-            allocation_el.text = str(create_size_bytes)
+            if source_name is None:
+                capacity_el = ET.SubElement(volume_el, "capacity")
+                capacity_el.set("unit", "bytes")
+                capacity_el.text = str(create_size_bytes)
 
-            self.volume = self.pool.createXML(
-                ET.tostring(volume_el, encoding="unicode")
-            )
+                allocation_el = ET.SubElement(volume_el, "allocation")
+                allocation_el.set("unit", "bytes")
+                allocation_el.text = str(create_size_bytes)
+
+                self.volume = self.pool.createXML(
+                    ET.tostring(volume_el, encoding="unicode")
+                )
+            else:
+                if source_pool_name is not None:
+                    source_pool = libvirt_conn.storagePoolLookupByName(source_pool_name)
+                else:
+                    source_pool = self.pool
+
+                source_volume = source_pool.storageVolLookupByName(source_name)
+
+                _, source_volume_capacity, _ = source_volume.info()
+
+                if source_volume_capacity > create_size_bytes:
+                    raise SourceVolumeTooBigError(
+                        f"Source volume {source_name} size {source_volume_capacity} is larger than the target size {create_size_bytes} of {name}."
+                    )
+
+                self.volume = self.pool.createXMLFrom(
+                    ET.tostring(volume_el, encoding="unicode"), source_volume
+                )
+
+                self.volume.resize(
+                    create_size_bytes, libvirt.VIR_STORAGE_VOL_RESIZE_ALLOCATE
+                )
 
 
 class DomainDefinition:

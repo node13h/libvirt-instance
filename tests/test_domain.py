@@ -5,224 +5,82 @@ import pytest
 
 from libvirt_instance import domain
 
-
-def libvirt_conn_base():
-    conn = MagicMock()
-    conn.getCapabilities.return_value = """
-<capabilities>
-  <host>
-    <cpu>
-      <arch>x86_64</arch>
-    </cpu>
-  </host>
-  <guest>
-    <os_type>hvm</os_type>
-    <arch name='x86_64'>
-      <wordsize>64</wordsize>
-      <emulator>/usr/bin/qemu-system-x86_64</emulator>
-      <machine maxCpus='255'>pc-i440fx-6.2</machine>
-      <machine canonical='pc-i440fx-6.2' maxCpus='255'>pc</machine>
-      <domain type='qemu'>
-        <emulator>/usr/bin/qemu</emulator>
-        <machine maxCpus='255'>pc-i440fx-6.1</machine>
-      </domain>
-      <domain type='kvm'>
-        <emulator>/usr/bin/qemu-kvm</emulator>
-        <machine maxCpus='255'>pc-i440fx-7.0</machine>
-      </domain>
-    </arch>
-    <features>
-      <acpi default='on' toggle='yes'/>
-      <apic default='on' toggle='no'/>
-      <cpuselection/>
-      <deviceboot/>
-      <disksnapshot default='on' toggle='no'/>
-    </features>
-  </guest>
-
-</capabilities>
-    """
-
-    return conn
+from .libvirt_mock import virConnect
 
 
-def mock_dir_storageVolLookupByName(vol_name):
-    vol = MagicMock()
-    vol.name.return_value = vol_name
-    vol.XMLDesc.return_value = f"""
-<volume type='file'>
-  <name>{vol_name}</name>
-  <key>/var/lib/libvirt/images/{vol_name}.img</key>
-  <capacity unit='bytes'>554389504</capacity>
-  <allocation unit='bytes'>554389504</allocation>
-  <physical unit='bytes'>554389504</physical>
-  <target>
-    <path>/var/lib/libvirt/images/{vol_name}.img</path>
-    <format type='raw'/>
-    <permissions>
-      <mode>0644</mode>
-      <owner>0</owner>
-      <group>0</group>
-      <label>unconfined_u:object_r:unlabeled_t:s0</label>
-    </permissions>
-    <timestamps>
-      <atime>1667514688.552875991</atime>
-      <mtime>1654761281.264082627</mtime>
-      <ctime>1654761281.264082627</ctime>
-      <btime>0</btime>
-    </timestamps>
-  </target>
-</volume>
- """
-
-    return vol
-
-
-def mock_dir_pool_createXML(xml):
-    pool = ET.fromstring(xml)
-
-    vol_name = pool.find("./name").text
-
-    return mock_dir_storageVolLookupByName(vol_name)
-
-
-def mock_dir_storagePoolLookupByName(pool_name):
-    pool = MagicMock()
-    pool.XMLDesc.return_value = f"""
-<pool type='dir'>
-  <name>{pool_name}</name>
-  <uuid>398b704a-9128-4c0d-9156-d97578ed19ec</uuid>
-  <capacity unit='bytes'>17152606208</capacity>
-  <allocation unit='bytes'>7409659904</allocation>
-  <available unit='bytes'>9742946304</available>
-  <source>
-  </source>
-  <target>
-    <path>/var/lib/libvirt/images</path>
-    <permissions>
-      <mode>0755</mode>
-      <owner>0</owner>
-      <group>0</group>
-      <label>system_u:object_r:unlabeled_t:s0</label>
-    </permissions>
-  </target>
-</pool>
-"""
-    pool.listVolumes.return_value = ["testvolume2", "testvolume3"]
-
-    pool.storageVolLookupByName = mock_dir_storageVolLookupByName
-    pool.name.return_value = pool_name
-    pool.createXML = mock_dir_pool_createXML
-
-    return pool
-
-
-@pytest.fixture
-def libvirt_conn_dir():
-    conn = libvirt_conn_base()
-    conn.storagePoolLookupByName = mock_dir_storagePoolLookupByName
-
-    return conn
-
-
-def mock_rbd_storageVolLookupByName(vol_name):
-    vol = MagicMock()
-    vol.name.return_value = vol_name
-    vol.XMLDesc.return_value = f"""
-<volume type='network'>
-  <name>{vol_name}</name>
-  <key>rbd1/{vol_name}</key>
-  <capacity unit='bytes'>17179869184</capacity>
-  <allocation unit='bytes'>17179869184</allocation>
-  <target>
-    <path>rbd1/{vol_name}</path>
-    <format type='raw'/>
-  </target>
-</volume>
- """
-
-    return vol
-
-
-def mock_rbd_pool_createXML(xml):
-    pool = ET.fromstring(xml)
-
-    vol_name = pool.find("./name").text
-
-    return mock_rbd_storageVolLookupByName(vol_name)
-
-
-def mock_rbd_storagePoolLookupByName(pool_name):
-    pool = MagicMock()
-    pool.XMLDesc.return_value = f"""
-<pool type='rbd'>
-  <name>{pool_name}</name>
-  <uuid>20ad2b50-50a9-4423-8eaa-72b481947da9</uuid>
-  <capacity unit='bytes'>101779903610880</capacity>
-  <allocation unit='bytes'>12070043725569</allocation>
-  <available unit='bytes'>65141153693696</available>
-  <source>
-    <host name='mon1'/>
-    <host name='mon2'/>
-    <host name='mon3'/>
-    <name>rbd</name>
-    <auth type='ceph' username='libvirt'>
-      <secret uuid='89890794-6310-4e93-81a1-0d37d601ab78'/>
-    </auth>
-  </source>
-</pool>
-"""
-    pool.listVolumes.return_value = ["testvolume2", "testvolume3"]
-
-    pool.storageVolLookupByName = mock_rbd_storageVolLookupByName
-    pool.name.return_value = pool_name
-    pool.createXML = mock_rbd_pool_createXML
-
-    return pool
-
-
-@pytest.fixture
-def libvirt_conn_rbd():
-    conn = libvirt_conn_base()
-    conn.storagePoolLookupByName = mock_rbd_storagePoolLookupByName
-
-    return conn
-
-
-def test_volume(libvirt_conn_dir):
+def test_volume():
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=virConnect(),
+        pool_name="default",
     )
 
     assert v.volume.name() == "testvolume"
 
 
-def test_volume_existing(libvirt_conn_dir):
+def test_volume_existing():
+    conn = virConnect()
+
+    domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=conn,
+        pool_name="default",
+    )
+
     with pytest.raises(domain.VolumeAlreadyExistsError):
         domain.Volume(
-            "testvolume2",
+            "testvolume",
             create_size_bytes=16777216,
-            libvirt_conn=libvirt_conn_dir,
-            pool_name="testpool",
+            libvirt_conn=conn,
+            pool_name="default",
         )
 
 
-def test_volume_existing_ok(libvirt_conn_dir):
+def test_volume_existing_ok():
+    conn = virConnect()
+
+    domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=conn,
+        pool_name="default",
+    )
+
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=conn,
+        pool_name="default",
+        exist_ok=True,
+    )
+
+    assert v.volume.name() == "testvolume"
+
+
+def test_volume_from_source():
+    conn = virConnect()
+
+    domain.Volume(
+        "testvolume1",
+        create_size_bytes=100000,
+        libvirt_conn=conn,
+        pool_name="default",
+    )
+
     v = domain.Volume(
         "testvolume2",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
-        exist_ok=True,
+        libvirt_conn=conn,
+        pool_name="default",
+        source_name="testvolume1",
     )
 
     assert v.volume.name() == "testvolume2"
 
 
-def test_domain_init(libvirt_conn_dir):
+def test_domain_init():
     domainxml = """
     <domain>
       <name>test</name>
@@ -235,7 +93,7 @@ def test_domain_init(libvirt_conn_dir):
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -259,14 +117,16 @@ def test_domain_init(libvirt_conn_dir):
     assert devices_emulator_el.text == "/usr/bin/qemu-kvm"
 
 
-def test_domain_define(libvirt_conn_dir):
+def test_domain_define():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -275,17 +135,17 @@ def test_domain_define(libvirt_conn_dir):
 
     d.define()
 
-    libvirt_conn_dir.defineXML.assert_called()
+    assert "foo" in conn._domains
 
 
-def test_domain_init_host_arch(libvirt_conn_dir):
+def test_domain_init_host_arch():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         machine="pc",
@@ -297,14 +157,14 @@ def test_domain_init_host_arch(libvirt_conn_dir):
     assert os_type_el.get("arch") == "x86_64"
 
 
-def test_domain_init_domain_type_specific_machine(libvirt_conn_dir):
+def test_domain_init_domain_type_specific_machine():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -317,7 +177,7 @@ def test_domain_init_domain_type_specific_machine(libvirt_conn_dir):
     assert os_type_el.get("arch") == "x86_64"
 
 
-def test_domain_init_domain_type_specific_machine_wrong_domain_type(libvirt_conn_dir):
+def test_domain_init_domain_type_specific_machine_wrong_domain_type():
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
@@ -325,7 +185,7 @@ def test_domain_init_domain_type_specific_machine_wrong_domain_type(libvirt_conn
             "foo",
             ram_bytes=16777216,
             vcpus=1,
-            libvirt_conn=libvirt_conn_dir,
+            libvirt_conn=virConnect(),
             basexml=domainxml,
             domain_type="kvm",
             arch_name="x86_64",
@@ -333,14 +193,14 @@ def test_domain_init_domain_type_specific_machine_wrong_domain_type(libvirt_conn
         )
 
 
-def test_domain_init_custom_domain_type(libvirt_conn_dir):
+def test_domain_init_custom_domain_type():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="qemu",
         arch_name="x86_64",
@@ -352,7 +212,7 @@ def test_domain_init_custom_domain_type(libvirt_conn_dir):
     assert domain_el.get("type") == "qemu"
 
 
-def test_domain_init_unsupported_domain_type(libvirt_conn_dir):
+def test_domain_init_unsupported_domain_type():
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
@@ -360,7 +220,7 @@ def test_domain_init_unsupported_domain_type(libvirt_conn_dir):
             "foo",
             ram_bytes=16777216,
             vcpus=1,
-            libvirt_conn=libvirt_conn_dir,
+            libvirt_conn=virConnect(),
             basexml=domainxml,
             domain_type="UNSUPPORTED",
             arch_name="x86_64",
@@ -368,14 +228,14 @@ def test_domain_init_unsupported_domain_type(libvirt_conn_dir):
         )
 
 
-def test_domain_init_custom_cpu(libvirt_conn_dir):
+def test_domain_init_custom_cpu():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -395,14 +255,14 @@ def test_domain_init_custom_cpu(libvirt_conn_dir):
     assert cpu_model_el.get("fallback") == "allow"
 
 
-def test_domain_init_existing_cpu(libvirt_conn_dir):
+def test_domain_init_existing_cpu():
     domainxml = "<domain><cpu><model>TestCPU</model></cpu></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -415,14 +275,14 @@ def test_domain_init_existing_cpu(libvirt_conn_dir):
     assert cpu_model_el.text == "TestCPU"
 
 
-def test_domain_init_existing_cpu_override(libvirt_conn_dir):
+def test_domain_init_existing_cpu_override():
     domainxml = "<domain><cpu><model>TestCPU</model></cpu></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
         domain_type="kvm",
         arch_name="x86_64",
@@ -436,7 +296,7 @@ def test_domain_init_existing_cpu_override(libvirt_conn_dir):
     assert cpu_model_el.text == "SandyBridge"
 
 
-def test_domain_init_unsupported_arch(libvirt_conn_dir):
+def test_domain_init_unsupported_arch():
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
@@ -444,7 +304,7 @@ def test_domain_init_unsupported_arch(libvirt_conn_dir):
             "foo",
             ram_bytes=16777216,
             vcpus=1,
-            libvirt_conn=libvirt_conn_dir,
+            libvirt_conn=virConnect(),
             basexml=domainxml,
             domain_type="kvm",
             arch_name="INVALID",
@@ -452,7 +312,7 @@ def test_domain_init_unsupported_arch(libvirt_conn_dir):
         )
 
 
-def test_domain_init_unsupported_machine(libvirt_conn_dir):
+def test_domain_init_unsupported_machine():
     domainxml = "<domain></domain>"
 
     with pytest.raises(RuntimeError):
@@ -460,7 +320,7 @@ def test_domain_init_unsupported_machine(libvirt_conn_dir):
             "foo",
             ram_bytes=16777216,
             vcpus=1,
-            libvirt_conn=libvirt_conn_dir,
+            libvirt_conn=virConnect(),
             basexml=domainxml,
             domain_type="kvm",
             arch_name="x86_64",
@@ -468,22 +328,24 @@ def test_domain_init_unsupported_machine(libvirt_conn_dir):
         )
 
 
-def test_domain_add_disk_virtio_blk(libvirt_conn_dir):
+def test_domain_add_disk_virtio_blk():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v, bus="virtio", cache="none")
@@ -502,28 +364,30 @@ def test_domain_add_disk_virtio_blk(libvirt_conn_dir):
     assert disk_el.find("./target").get("dev") == "vda"
     assert disk_el.find("./target").get("bus") == "virtio"
 
-    assert disk_el.find("./source").get("pool") == "testpool"
+    assert disk_el.find("./source").get("pool") == "default"
     assert disk_el.find("./source").get("volume") == "testvolume"
 
     assert disk_el.find("./driver").get("cache") == "none"
 
 
-def test_domain_add_disk_virtio_scsi(libvirt_conn_dir):
+def test_domain_add_disk_virtio_scsi():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v, bus="scsi", cache="none")
@@ -539,7 +403,7 @@ def test_domain_add_disk_virtio_scsi(libvirt_conn_dir):
     assert target_el.get("bus") == "scsi"
 
     source_el = disk_el.find("./source")
-    assert source_el.get("pool") == "testpool"
+    assert source_el.get("pool") == "default"
     assert source_el.get("volume") == "testvolume"
 
     assert disk_el.find("./driver").get("cache") == "none"
@@ -557,7 +421,7 @@ def test_domain_add_disk_virtio_scsi(libvirt_conn_dir):
     assert controller_el is not None
 
 
-def test_domain_add_disk_virtio_scsi_existing_controller(libvirt_conn_dir):
+def test_domain_add_disk_virtio_scsi_existing_controller():
     domainxml = """
     <domain>
       <devices>
@@ -569,19 +433,21 @@ def test_domain_add_disk_virtio_scsi_existing_controller(libvirt_conn_dir):
     </domain>
     """
 
+    conn = virConnect()
+
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v, bus="scsi", cache="none")
@@ -599,36 +465,38 @@ def test_domain_add_disk_virtio_scsi_existing_controller(libvirt_conn_dir):
     assert address_el.get("unit") == "0"
 
 
-def test_domain_add_disk_multiple(libvirt_conn_dir):
+def test_domain_add_disk_multiple():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v1 = domain.Volume(
         "v1",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     v2 = domain.Volume(
         "v2",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     v3 = domain.Volume(
         "v3",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v1, bus="virtio", cache="none")
@@ -646,29 +514,31 @@ def test_domain_add_disk_multiple(libvirt_conn_dir):
     assert disk_els[2].find("./target").get("dev") == "sda"
 
 
-def test_domain_add_disk_multiple_scsi(libvirt_conn_dir):
+def test_domain_add_disk_multiple_scsi():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v1 = domain.Volume(
         "v1",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     v2 = domain.Volume(
         "v2",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v1, bus="scsi", cache="none")
@@ -687,22 +557,24 @@ def test_domain_add_disk_multiple_scsi(libvirt_conn_dir):
     assert disk_els[1].find("./address").get("unit") == "1"
 
 
-def test_domain_add_disk_discard(libvirt_conn_dir):
+def test_domain_add_disk_discard():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v, discard="unmap")
@@ -716,22 +588,24 @@ def test_domain_add_disk_discard(libvirt_conn_dir):
     assert disk_el.find("./driver").get("discard") == "unmap"
 
 
-def test_domain_add_disk_boot_order(libvirt_conn_dir):
+def test_domain_add_disk_boot_order():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     d.add_disk(v, boot_order=1)
@@ -745,36 +619,38 @@ def test_domain_add_disk_boot_order(libvirt_conn_dir):
     assert disk_el.find("./boot").get("order") == "1"
 
 
-def test_domain_add_disk_unsupported_bus(libvirt_conn_dir):
+def test_domain_add_disk_unsupported_bus():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_dir,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="default",
     )
 
     with pytest.raises(domain.UnsupportedBusError):
         d.add_disk(v, bus="UNSUPPORTED BUS")
 
 
-def test_domain_add_disk_unsupported_volume_type(libvirt_conn_dir):
+def test_domain_add_disk_unsupported_volume_type():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
     )
 
@@ -785,22 +661,24 @@ def test_domain_add_disk_unsupported_volume_type(libvirt_conn_dir):
         d.add_disk(v)
 
 
-def test_domain_add_disk_rbd(libvirt_conn_rbd):
+def test_domain_add_disk_rbd():
     domainxml = "<domain></domain>"
+
+    conn = virConnect()
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_rbd,
+        libvirt_conn=conn,
         basexml=domainxml,
     )
 
     v = domain.Volume(
         "testvolume",
         create_size_bytes=16777216,
-        libvirt_conn=libvirt_conn_rbd,
-        pool_name="testpool",
+        libvirt_conn=conn,
+        pool_name="ceph",
     )
 
     d.add_disk(v)
@@ -828,14 +706,14 @@ def test_domain_add_disk_rbd(libvirt_conn_rbd):
     assert {h.get("name") for h in source_host_els} == {"mon1", "mon2", "mon3"}
 
 
-def test_domain_add_bridge_interface(libvirt_conn_dir):
+def test_domain_add_bridge_interface():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
     )
 
@@ -855,14 +733,14 @@ def test_domain_add_bridge_interface(libvirt_conn_dir):
     assert interface_el.find("./boot") is None
 
 
-def test_domain_add_bridge_interface_mac_address(libvirt_conn_dir):
+def test_domain_add_bridge_interface_mac_address():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
     )
 
@@ -875,14 +753,14 @@ def test_domain_add_bridge_interface_mac_address(libvirt_conn_dir):
     assert interface_el.find("./mac").get("address") == "00:de:ad:be:ef:00"
 
 
-def test_domain_add_bridge_interface_boot_order(libvirt_conn_dir):
+def test_domain_add_bridge_interface_boot_order():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
     )
 
@@ -895,14 +773,14 @@ def test_domain_add_bridge_interface_boot_order(libvirt_conn_dir):
     assert interface_el.find("./boot").get("order") == "1"
 
 
-def test_domain_add_network_interface(libvirt_conn_dir):
+def test_domain_add_network_interface():
     domainxml = "<domain></domain>"
 
     d = domain.DomainDefinition(
         "foo",
         ram_bytes=16777216,
         vcpus=1,
-        libvirt_conn=libvirt_conn_dir,
+        libvirt_conn=virConnect(),
         basexml=domainxml,
     )
 
