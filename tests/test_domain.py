@@ -117,6 +117,62 @@ def test_domain_init():
     assert devices_emulator_el.text == "/usr/bin/qemu-kvm"
 
 
+def test_domain_existing_devices():
+    domainxml = """
+    <domain>
+      <devices></devices>
+    </domain>
+    """
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+        domain_type="kvm",
+        arch_name="x86_64",
+        machine="pc",
+    )
+
+    domain_el = ET.fromstring(str(d))
+
+    # Check if we've added the emulator element to the existing the <devices> and
+    # not into additional one.
+    devices_el = domain_el.find("./devices")
+    devices_emulator_el = devices_el.find("./emulator")
+
+    assert devices_emulator_el.text == "/usr/bin/qemu-kvm"
+
+
+def test_domain_existing_devices_emulator():
+    domainxml = """
+    <domain>
+      <devices><emulator>/dev/null</emulator></devices>
+    </domain>
+    """
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+        domain_type="kvm",
+        arch_name="x86_64",
+        machine="pc",
+    )
+
+    domain_el = ET.fromstring(str(d))
+
+    # Check if we've modified the existing emulator element and
+    # not an additional one.
+    devices_el = domain_el.find("./devices")
+    devices_emulator_el = devices_el.find("./emulator")
+
+    assert devices_emulator_el.text == "/usr/bin/qemu-kvm"
+
+
 def test_domain_define():
     domainxml = "<domain></domain>"
 
@@ -155,6 +211,28 @@ def test_domain_init_host_arch():
     os_type_el = domain_el.find("./os/type")
 
     assert os_type_el.get("arch") == "x86_64"
+
+
+def test_domain_init_existing_os():
+    domainxml = "<domain><os firmware='efi'></os></domain>"
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+        domain_type="kvm",
+        machine="pc",
+    )
+
+    domain_el = ET.fromstring(str(d))
+    os_el = domain_el.find("./os")
+
+    assert os_el.get("firmware") == "efi"
+    # Check if we've added the type element to the existing the <os> and
+    # not into additional one.
+    assert os_el.find("./type") is not None
 
 
 def test_domain_init_domain_type_specific_machine():

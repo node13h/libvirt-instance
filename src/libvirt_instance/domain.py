@@ -146,7 +146,9 @@ class DomainDefinition:
         if arch_name is None:
             raise RuntimeError("Unable to get target arch name")
 
-        os_el = self._domain_el.find("./os") or ET.SubElement(self._domain_el, "os")
+        os_el = self._domain_el.find("./os")
+        if os_el is None:
+            os_el = ET.SubElement(self._domain_el, "os")
 
         os_type_el = os_el.find("./type")
         if os_type_el is not None:
@@ -192,13 +194,15 @@ class DomainDefinition:
         vcpu_el.set("placement", "static")
         vcpu_el.text = str(vcpus)
 
-        self._devices_el = self._domain_el.find("./devices") or ET.SubElement(
-            self._domain_el, "devices"
-        )
+        devices_el = self._domain_el.find("./devices")
+        if devices_el is None:
+            devices_el = ET.SubElement(self._domain_el, "devices")
 
-        emulator_el = self._devices_el.find("./emulator") or ET.SubElement(
-            self._devices_el, "emulator"
-        )
+        self._devices_el = devices_el
+
+        emulator_el = self._devices_el.find("./emulator")
+        if emulator_el is None:
+            emulator_el = ET.SubElement(self._devices_el, "emulator")
         emulator_el.text = self._get_emulator(domain_type, arch_name, machine)
 
     def __str__(self) -> str:
