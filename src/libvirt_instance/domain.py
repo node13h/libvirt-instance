@@ -1,10 +1,13 @@
+import logging
 import xml.etree.ElementTree as ET
-from typing import Optional
+from typing import BinaryIO, Optional
 
 import libvirt  # type: ignore
 from typing_extensions import TypedDict
 
 from libvirt_instance.util import index_to_drive_name
+
+logger = logging.getLogger(__name__)
 
 DISK_BUS_VIRTIO = "virtio"
 DISK_BUS_SCSI = "scsi"
@@ -55,9 +58,21 @@ class Volume:
         source_name: Optional[str] = None,
     ) -> None:
 
+        alignment_remainder = create_size_bytes % (2**20)
+        if alignment_remainder == 0:
+            volume_size_bytes = create_size_bytes
+        else:
+            volume_size_bytes = create_size_bytes + (2**20 - alignment_remainder)
+            logger.debug(
+                f"Padding target volume {name} size from requested {create_size_bytes} "
+                f"bytes to {volume_size_bytes} bytes for 1MiB alignment"
+            )
+
+        self._conn = libvirt_conn
+
         self.name = name
 
-        self.pool = libvirt_conn.storagePoolLookupByName(pool_name)
+        self.pool = self._conn.storagePoolLookupByName(pool_name)
 
         pool_el = ET.fromstring(self.pool.XMLDesc())
 
@@ -69,6 +84,7 @@ class Volume:
                     f"Volume {name} already exists in the {pool_name} pool."
                 )
 
+            logger.debug(f"Using existing volume {name}")
             self.volume = self.pool.storageVolLookupByName(name)
         else:
             volume_el = ET.Element("volume")
@@ -76,20 +92,25 @@ class Volume:
             ET.SubElement(volume_el, "name").text = name
 
             if source_name is None:
+                logger.debug(f"Creating a new volume {name} from scratch")
+
                 capacity_el = ET.SubElement(volume_el, "capacity")
                 capacity_el.set("unit", "bytes")
-                capacity_el.text = str(create_size_bytes)
+                capacity_el.text = str(volume_size_bytes)
 
                 allocation_el = ET.SubElement(volume_el, "allocation")
                 allocation_el.set("unit", "bytes")
-                allocation_el.text = str(create_size_bytes)
+                allocation_el.text = str(volume_size_bytes)
 
                 self.volume = self.pool.createXML(
                     ET.tostring(volume_el, encoding="unicode")
                 )
             else:
+                logger.debug(
+                    f"Creating a new volume {name} using {source_name} as the base"
+                )
                 if source_pool_name is not None:
-                    source_pool = libvirt_conn.storagePoolLookupByName(source_pool_name)
+                    source_pool = self._conn.storagePoolLookupByName(source_pool_name)
                 else:
                     source_pool = self.pool
 
@@ -97,18 +118,39 @@ class Volume:
 
                 _, source_volume_capacity, _ = source_volume.info()
 
-                if source_volume_capacity > create_size_bytes:
+                if source_volume_capacity > volume_size_bytes:
                     raise SourceVolumeTooBigError(
-                        f"Source volume {source_name} size {source_volume_capacity} is larger than the target size {create_size_bytes} of {name}."
+                        f"Source volume {source_name} size {source_volume_capacity} "
+                        f"is larger than the target size {volume_size_bytes} of {name}."
                     )
 
                 self.volume = self.pool.createXMLFrom(
                     ET.tostring(volume_el, encoding="unicode"), source_volume
                 )
 
-                self.volume.resize(
-                    create_size_bytes, libvirt.VIR_STORAGE_VOL_RESIZE_ALLOCATE
-                )
+                if source_volume_capacity < volume_size_bytes:
+                    logger.debug(
+                        f"Growing volume {name} to target size {volume_size_bytes} "
+                        f"as the base volume {source_name} is smaller"
+                    )
+                    self.volume.resize(
+                        volume_size_bytes, libvirt.VIR_STORAGE_VOL_RESIZE_ALLOCATE
+                    )
+
+    def upload(self, fp: BinaryIO, size: int) -> None:
+        def handler(stream: libvirt.virStream, nbytes: int, fp: BinaryIO):
+            logger.debug(f"Uploading chunk to volume {self.name}")
+            return fp.read(nbytes)
+
+        stream = self._conn.newStream()
+
+        logger.debug(f"Starting upload of {size} bytes to volume {self.name}")
+        self.volume.upload(stream, 0, size)
+
+        stream.sendAll(handler, fp)
+
+        stream.finish()
+        logger.debug(f"Upload to volume {self.name} finished")
 
 
 class DomainDefinition:
@@ -122,6 +164,7 @@ class DomainDefinition:
         libvirt_conn: libvirt.virConnect,
         domain_type: str = "kvm",
         machine: str = "pc",
+        uuid: Optional[str] = None,
         arch_name: Optional[str] = None,
         cpu_model: Optional[str] = None,
     ) -> None:
@@ -145,6 +188,13 @@ class DomainDefinition:
 
         if arch_name is None:
             raise RuntimeError("Unable to get target arch name")
+
+        if uuid is not None:
+
+            uuid_el = self._domain_el.find("./uuid")
+            if uuid_el is None:
+                uuid_el = ET.SubElement(self._domain_el, "uuid")
+            uuid_el.text = uuid
 
         os_el = self._domain_el.find("./os")
         if os_el is None:

@@ -2,11 +2,14 @@ import argparse
 import importlib.metadata
 import logging
 import sys
+import uuid
 from pathlib import Path
+from typing import Any, Optional
 
 import libvirt  # type: ignore
+import yaml
 
-from libvirt_instance import util
+from libvirt_instance import seed_image, util
 from libvirt_instance.config import Config
 from libvirt_instance.domain import DomainDefinition, Volume
 
@@ -134,10 +137,32 @@ def parse_args() -> argparse.Namespace:
         help='comma-separated network interface spec; format is: "preset-name,key=value,..."',
     )
 
+    parser_create.add_argument(
+        "--cloud-seed-disk",
+        help=(
+            "preset name to use when creating the cloud seed disk; "
+            "see https://cloudinit.readthedocs.io/en/latest/topics/datasources/nocloud.html for more info"
+        ),
+    )
+
+    parser_create.add_argument(
+        "--cloud-user-data-file",
+        type=Path,
+        help="location of the cloud-init user-data file; needs --cloud-seed-disk",
+    )
+
+    parser_create.add_argument(
+        "--cloud-network-config-file",
+        type=Path,
+        help="location of the cloud-init network-config file; needs --cloud-seed-disk",
+    )
+
     return parser.parse_args()
 
 
 def cmd_create(args: argparse.Namespace, config: Config):
+    instance_id = str(uuid.uuid4())
+
     cpu_model = args.cpu_model or config.get_defaults("cpu-model")
     arch_name = args.arch_name or config.get_defaults("arch-name")
     if not arch_name:
@@ -163,6 +188,43 @@ def cmd_create(args: argparse.Namespace, config: Config):
         preset = config.get_preset("interface", preset_name)
         nics.append((preset, kwargs))
 
+    seed_disk: Optional[dict[str, Any]]
+
+    if args.cloud_seed_disk is not None:
+        seed_disk_preset = config.get_preset("disk", args.cloud_seed_disk)
+
+        meta_data = {
+            "instance-id": instance_id,
+            "local-hostname": args.name,
+        }
+        meta_data_body = yaml.dump(meta_data)
+
+        if args.cloud_user_data_file is not None:
+            with open(args.cloud_user_data_file, "r") as fp:
+                user_data_body = fp.read()
+        else:
+            user_data_body = (
+                ""  # user-data is not optional, simulate empty file if missing.
+            )
+
+        if args.cloud_network_config_file is not None:
+            with open(args.cloud_network_config_file, "r") as fp:
+                network_config_body = fp.read()
+        else:
+            network_config_body = None  # network-config is optional.
+
+        seed_iso_fp, seed_iso_size = seed_image.build(
+            meta_data_body, user_data_body, network_config_body
+        )
+
+        seed_disk = {
+            "size": seed_iso_size,
+            "fp": seed_iso_fp,
+            "preset": seed_disk_preset,
+        }
+    else:
+        seed_disk = None
+
     conn = libvirt.open(args.connect)
 
     d = DomainDefinition(
@@ -173,6 +235,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
         libvirt_conn=conn,
         domain_type=domain_type,
         machine=machine_type,
+        uuid=instance_id,
         arch_name=arch_name,
         cpu_model=cpu_model,
     )
@@ -194,6 +257,23 @@ def cmd_create(args: argparse.Namespace, config: Config):
             boot_order=kwargs.get("boot", None),
         )
 
+    if seed_disk is not None:
+
+        v = Volume(
+            f"{args.name}-seed",
+            create_size_bytes=seed_disk["size"],
+            libvirt_conn=conn,
+            pool_name=seed_disk["preset"]["pool"],
+        )
+
+        v.upload(seed_disk["fp"], seed_disk["size"])
+
+        d.add_disk(
+            v,
+            bus=seed_disk["preset"]["bus"],
+            cache=seed_disk["preset"]["cache"],
+        )
+
     for preset, kwargs in nics:
         if "network" in preset:
             d.add_network_interface(
@@ -213,6 +293,8 @@ def cmd_create(args: argparse.Namespace, config: Config):
             raise CliError(f"Preset {preset_name} is invalid")
 
     d.define()
+
+    # TODO: Output UUID
 
 
 def main() -> None:

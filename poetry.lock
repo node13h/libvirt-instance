@@ -194,6 +194,14 @@ testing = ["pytest-benchmark", "pytest"]
 dev = ["tox", "pre-commit"]
 
 [[package]]
+name = "pycdlib"
+version = "1.13.0"
+description = "Pure python ISO manipulation library"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "pycodestyle"
 version = "2.10.0"
 description = "Python style guide checker"
@@ -264,7 +272,7 @@ python-versions = ">=3.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "f727c96cb45659f77dd8f596348b9867247f2697b04040b3e9412c130d84b4e6"
+content-hash = "290ca3a5d899a66ac3e5b4f0ce160903fb32753708fc9a08198c2a9fe53cfc22"
 
 [metadata.files]
 attrs = []
@@ -332,6 +340,10 @@ platformdirs = [
     {file = "platformdirs-2.6.0.tar.gz", hash = "sha256:b46ffafa316e6b83b47489d240ce17173f123a9b9c83282141c3daf26ad9ac2e"},
 ]
 pluggy = []
+pycdlib = [
+    {file = "pycdlib-1.13.0-py2.py3-none-any.whl", hash = "sha256:cb4a9b55a3ee59c24b0b024aff7f46c2f1982452c7c8e153742f008f24a69930"},
+    {file = "pycdlib-1.13.0.tar.gz", hash = "sha256:38c033be82d3a671da5f779d441942907299c2113a6c50e1fb399a91ea1612f0"},
+]
 pycodestyle = [
     {file = "pycodestyle-2.10.0-py2.py3-none-any.whl", hash = "sha256:8a4eaf0d0495c7395bdab3589ac2db602797d76207242c17d470186815706610"},
     {file = "pycodestyle-2.10.0.tar.gz", hash = "sha256:347187bdb476329d98f695c213d7295a846d1152ff4fe9bacb8a9590b8ee7053"},

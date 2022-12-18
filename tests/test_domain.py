@@ -19,6 +19,36 @@ def test_volume():
     assert v.volume.name() == "testvolume"
 
 
+def test_volume_size_no_alignment_needed():
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=virConnect(),
+        pool_name="default",
+    )
+
+    assert v.volume.name() == "testvolume"
+
+    volume_el = ET.fromstring(v.volume.XMLDesc())
+
+    assert int(volume_el.find("./capacity").text) == 16777216
+
+
+def test_volume_size_alignment_needed():
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777210,
+        libvirt_conn=virConnect(),
+        pool_name="default",
+    )
+
+    assert v.volume.name() == "testvolume"
+
+    volume_el = ET.fromstring(v.volume.XMLDesc())
+
+    assert int(volume_el.find("./capacity").text) == 16777216
+
+
 def test_volume_existing():
     conn = virConnect()
 
@@ -192,6 +222,46 @@ def test_domain_define():
     d.define()
 
     assert "foo" in conn._domains
+
+
+def test_domain_init_uuid():
+    domainxml = "<domain></domain>"
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+        uuid="a009bdf8-a172-4d63-9164-625b77f40ac4",
+    )
+
+    domain_el = ET.fromstring(str(d))
+    uuid_el = domain_el.find("./uuid")
+
+    assert uuid_el.text == "a009bdf8-a172-4d63-9164-625b77f40ac4"
+
+
+def test_domain_init_override_existing_uuid():
+    domainxml = """
+    <domain>
+      <uuid>80247a17-1bf4-4c9f-b243-564e8ac32d6d</uuid>
+    </domain>
+    """
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+        uuid="a009bdf8-a172-4d63-9164-625b77f40ac4",
+    )
+
+    domain_el = ET.fromstring(str(d))
+    uuid_el = domain_el.find("./uuid")
+
+    assert uuid_el.text == "a009bdf8-a172-4d63-9164-625b77f40ac4"
 
 
 def test_domain_init_host_arch():
