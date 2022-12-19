@@ -250,11 +250,12 @@ def cmd_create(args: argparse.Namespace, config: Config):
             source_pool_name=kwargs.get("src-pool", None),
         )
 
+        boot_order = int(kwargs["boot"]) if "boot" in kwargs else None
         d.add_disk(
             v,
             bus=preset["bus"],
             cache=preset["cache"],
-            boot_order=kwargs.get("boot", None),
+            boot_order=boot_order,
         )
 
     if seed_disk is not None:
@@ -275,19 +276,21 @@ def cmd_create(args: argparse.Namespace, config: Config):
         )
 
     for preset, kwargs in nics:
+        mac_address = kwargs.get("mac", None)
+        boot_order = int(kwargs["boot"]) if "boot" in kwargs else None
         if "network" in preset:
             d.add_network_interface(
                 preset["network"],
                 model_type=preset["type"],
-                mac_address=kwargs.get("mac", None),
-                boot_order=kwargs.get("boot", None),
+                mac_address=mac_address,
+                boot_order=boot_order,
             )
         elif "bridge" in preset:
             d.add_bridge_interface(
                 preset["bridge"],
                 model_type=preset["type"],
-                mac_address=kwargs.get("mac", None),
-                boot_order=kwargs.get("boot", None),
+                mac_address=mac_address,
+                boot_order=boot_order,
             )
         else:
             raise CliError(f"Preset {preset_name} is invalid")

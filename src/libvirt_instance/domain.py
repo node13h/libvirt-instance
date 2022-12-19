@@ -567,18 +567,9 @@ class DomainDefinition:
 
         return interface_el
 
-    def add_bridge_interface(
-        self,
-        source_bridge: str,
-        *,
-        model_type: str = "virtio",
-        mac_address: Optional[str] = None,
-        boot_order: Optional[int] = None,
-    ) -> None:
+    def add_bridge_interface(self, source_bridge: str, **kwargs) -> None:
 
-        interface_el = self._add_generic_interface(
-            model_type=model_type, mac_address=mac_address, boot_order=boot_order
-        )
+        interface_el = self._add_generic_interface(**kwargs)
 
         interface_el.set("type", "bridge")
 
@@ -588,15 +579,10 @@ class DomainDefinition:
     def add_network_interface(
         self,
         source_network: str = "default",
-        *,
-        model_type: str = "virtio",
-        mac_address: Optional[str] = None,
-        boot_order: Optional[int] = None,
+        **kwargs,
     ) -> None:
 
-        interface_el = self._add_generic_interface(
-            model_type=model_type, mac_address=mac_address, boot_order=boot_order
-        )
+        interface_el = self._add_generic_interface(**kwargs)
 
         interface_el.set("type", "network")
 
