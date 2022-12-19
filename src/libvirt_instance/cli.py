@@ -278,12 +278,15 @@ def cmd_create(args: argparse.Namespace, config: Config):
     for preset, kwargs in nics:
         mac_address = kwargs.get("mac", None)
         boot_order = int(kwargs["boot"]) if "boot" in kwargs else None
+        mtu = int(kwargs["mtu"]) if "mtu" in kwargs else None
+
         if "network" in preset:
             d.add_network_interface(
                 preset["network"],
                 model_type=preset["type"],
                 mac_address=mac_address,
                 boot_order=boot_order,
+                mtu=mtu,
             )
         elif "bridge" in preset:
             d.add_bridge_interface(
@@ -291,6 +294,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
                 model_type=preset["type"],
                 mac_address=mac_address,
                 boot_order=boot_order,
+                mtu=mtu,
             )
         else:
             raise CliError(f"Preset {preset_name} is invalid")

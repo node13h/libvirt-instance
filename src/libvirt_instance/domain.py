@@ -551,11 +551,16 @@ class DomainDefinition:
         model_type: str = "virtio",
         mac_address: Optional[str] = None,
         boot_order: Optional[int] = None,
+        mtu: Optional[int] = None,
     ) -> ET.Element:
         interface_el = ET.SubElement(self._devices_el, "interface")
 
         model_el = ET.SubElement(interface_el, "model")
         model_el.set("type", model_type)
+
+        if mtu is not None:
+            mtu_el = ET.SubElement(interface_el, "mtu")
+            mtu_el.set("size", str(mtu))
 
         if mac_address is not None:
             mac_el = ET.SubElement(interface_el, "mac")

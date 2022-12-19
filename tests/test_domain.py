@@ -921,6 +921,26 @@ def test_domain_add_bridge_interface_boot_order():
     assert interface_el.find("./boot").get("order") == "1"
 
 
+def test_domain_add_bridge_interface_mtu():
+    domainxml = "<domain></domain>"
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=virConnect(),
+        basexml=domainxml,
+    )
+
+    d.add_bridge_interface("br0", mtu=9000)
+
+    domain_el = ET.fromstring(str(d))
+
+    interface_el = domain_el.find("./devices/interface")
+
+    assert interface_el.find("./mtu").get("size") == "9000"
+
+
 def test_domain_add_network_interface():
     domainxml = "<domain></domain>"
 
