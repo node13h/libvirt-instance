@@ -1,5 +1,5 @@
 import importlib.resources
-from typing import Optional, TextIO
+from typing import Any, Optional, TextIO
 
 import yaml
 
@@ -36,6 +36,7 @@ class Config:
                 },
                 "disk": {
                     "local": {
+                        "type": "volume",
                         "pool": "default",
                         "bus": "virtio",
                         "cache": "none",
@@ -43,7 +44,8 @@ class Config:
                 },
                 "interface": {
                     "nat": {
-                        "type": "virtio",
+                        "type": "network",
+                        "model-type": "virtio",
                         "network": "default",
                     }
                 },
@@ -73,7 +75,7 @@ class Config:
     def get_defaults(self, key: str) -> Optional[str]:
         return self._config["defaults"].get(key, None)
 
-    def get_preset(self, preset_type: str, preset_name: str) -> dict[str, str]:
+    def get_preset(self, preset_type: str, preset_name: str) -> dict[str, Any]:
         if preset_type not in self._config["preset"]:
             raise UnsupportedPresetTypeError(
                 f"Preset type {preset_type} is not supported"

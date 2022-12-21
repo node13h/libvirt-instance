@@ -40,20 +40,19 @@ def parse_disk_spec(spec: str) -> tuple:
 
     if len(args) != 2:
         raise ValueError(
-            "Disk spec must specify preset name and size. "
+            "Disk spec must specify a preset name and a size. "
             "Got {}".format(",".join(args))
         )
 
     return args[0], util.human_size_units_to_bytes(args[1]), kwargs
 
 
-def parse_nic_spec(spec: str) -> tuple:
+def parse_generic_spec(spec: str) -> tuple:
     args, kwargs = parse_spec(spec)
 
     if len(args) != 1:
         raise ValueError(
-            "Network interface spec must specify preset name. "
-            "Got {}".format(",".join(args))
+            "Spec must specify a preset name. Got {}".format(",".join(args))
         )
 
     return args[0], kwargs
@@ -132,17 +131,15 @@ def parse_args() -> argparse.Namespace:
 
     parser_create.add_argument(
         "--nic",
-        type=parse_nic_spec,
+        type=parse_generic_spec,
         action="append",
         help='comma-separated network interface spec; format is: "preset-name,key=value,..."',
     )
 
     parser_create.add_argument(
         "--cloud-seed-disk",
-        help=(
-            "preset name to use when creating the cloud seed disk; "
-            "see https://cloudinit.readthedocs.io/en/latest/topics/datasources/nocloud.html for more info"
-        ),
+        type=parse_generic_spec,
+        help='comma-separated cloud seed disk spec; format is: "preset-name,key=value,..."',
     )
 
     parser_create.add_argument(
@@ -177,21 +174,59 @@ def cmd_create(args: argparse.Namespace, config: Config):
     if not domain_preset:
         raise CliError("Please select a domain preset to base the VM on")
 
-    # Resolve preset names in advance for implied validation.
+    # Resolve preset names and arguments in advance for implied validation.
     disks = []
     for i, (preset_name, disk_size, kwargs) in enumerate(args.disk):
         preset = config.get_preset("disk", preset_name)
-        disks.append((i, preset, disk_size, kwargs))
+
+        disk = preset.copy()
+
+        disk["name"] = f"{args.name}-disk{i}"
+        disk["size"] = disk_size
+
+        for key in ("pool", "bus", "cache", "source", "source-pool"):
+            if key in kwargs:
+                disk[key] = kwargs[key]
+
+        for key in ("boot-order",):
+            if key in kwargs:
+                disk[key] = int(kwargs[key])
+
+        disks.append(disk)
 
     nics = []
     for preset_name, kwargs in args.nic:
         preset = config.get_preset("interface", preset_name)
+
+        nic = preset.copy()
+
+        for key in ("model-type", "network", "bridge", "mac-address"):
+            if key in kwargs:
+                nic[key] = kwargs[key]
+
+        for key in ("boot-order", "mtu"):
+            if key in kwargs:
+                nic[key] = int(kwargs[key])
+
         nics.append((preset, kwargs))
 
     seed_disk: Optional[dict[str, Any]]
 
     if args.cloud_seed_disk is not None:
-        seed_disk_preset = config.get_preset("disk", args.cloud_seed_disk)
+        preset_name, kwargs = args.cloud_seed_disk
+        preset = config.get_preset("disk", preset_name)
+        preset_type = preset["type"]
+
+        if preset_type != "volume":
+            raise CliError(
+                f"Preset {preset_name} specified for the seed disk is of type {preset_type}. "
+                f"Only presets of type volume can be used for cloud seed disks."
+            )
+
+        seed_disk = {}
+
+        for key in ("pool", "bus", "cache"):
+            seed_disk[key] = kwargs.get(key, preset[key])
 
         meta_data = {
             "instance-id": instance_id,
@@ -203,9 +238,8 @@ def cmd_create(args: argparse.Namespace, config: Config):
             with open(args.cloud_user_data_file, "r") as fp:
                 user_data_body = fp.read()
         else:
-            user_data_body = (
-                ""  # user-data is not optional, simulate empty file if missing.
-            )
+            # user-data is not optional, simulate empty file if missing.
+            user_data_body = ""
 
         if args.cloud_network_config_file is not None:
             with open(args.cloud_network_config_file, "r") as fp:
@@ -213,15 +247,10 @@ def cmd_create(args: argparse.Namespace, config: Config):
         else:
             network_config_body = None  # network-config is optional.
 
-        seed_iso_fp, seed_iso_size = seed_image.build(
+        seed_disk["fp"], seed_disk["size"] = seed_image.build(
             meta_data_body, user_data_body, network_config_body
         )
 
-        seed_disk = {
-            "size": seed_iso_size,
-            "fp": seed_iso_fp,
-            "preset": seed_disk_preset,
-        }
     else:
         seed_disk = None
 
@@ -240,23 +269,27 @@ def cmd_create(args: argparse.Namespace, config: Config):
         cpu_model=cpu_model,
     )
 
-    for i, preset, disk_size, kwargs in disks:
-        v = Volume(
-            f"{args.name}-disk{i}",
-            create_size_bytes=disk_size,
-            libvirt_conn=conn,
-            pool_name=preset["pool"],
-            source_name=kwargs.get("src", None),
-            source_pool_name=kwargs.get("src-pool", None),
-        )
+    for disk in disks:
+        disk_type = disk["type"]
 
-        boot_order = int(kwargs["boot"]) if "boot" in kwargs else None
-        d.add_disk(
-            v,
-            bus=preset["bus"],
-            cache=preset["cache"],
-            boot_order=boot_order,
-        )
+        if disk_type == "volume":
+            v = Volume(
+                disk["name"],
+                create_size_bytes=disk_size,
+                libvirt_conn=conn,
+                pool_name=disk["pool"],
+                source_name=disk.get("source", None),
+                source_pool_name=disk.get("source-pool", None),
+            )
+
+            d.add_disk(
+                v,
+                bus=disk["bus"],
+                cache=disk["cache"],
+                boot_order=disk.get("boot-order", None),
+            )
+        else:
+            raise CliError(f"Disk type {disk_type} is unsupported")
 
     if seed_disk is not None:
 
@@ -264,40 +297,37 @@ def cmd_create(args: argparse.Namespace, config: Config):
             f"{args.name}-seed",
             create_size_bytes=seed_disk["size"],
             libvirt_conn=conn,
-            pool_name=seed_disk["preset"]["pool"],
+            pool_name=seed_disk["pool"],
         )
 
         v.upload(seed_disk["fp"], seed_disk["size"])
 
         d.add_disk(
             v,
-            bus=seed_disk["preset"]["bus"],
-            cache=seed_disk["preset"]["cache"],
+            bus=seed_disk["bus"],
+            cache=seed_disk["cache"],
         )
 
-    for preset, kwargs in nics:
-        mac_address = kwargs.get("mac", None)
-        boot_order = int(kwargs["boot"]) if "boot" in kwargs else None
-        mtu = int(kwargs["mtu"]) if "mtu" in kwargs else None
-
-        if "network" in preset:
+    for nic, kwargs in nics:
+        nic_type = nic["type"]
+        if nic_type == "network":
             d.add_network_interface(
-                preset["network"],
-                model_type=preset["type"],
-                mac_address=mac_address,
-                boot_order=boot_order,
-                mtu=mtu,
+                nic["network"],
+                model_type=nic["model-type"],
+                mac_address=nic.get("mac-address", None),
+                boot_order=nic.get("boot-order", None),
+                mtu=nic.get("mtu", None),
             )
-        elif "bridge" in preset:
+        elif nic_type == "bridge":
             d.add_bridge_interface(
-                preset["bridge"],
-                model_type=preset["type"],
-                mac_address=mac_address,
-                boot_order=boot_order,
-                mtu=mtu,
+                nic["bridge"],
+                model_type=nic["model-type"],
+                mac_address=nic.get("mac-address", None),
+                boot_order=nic.get("boot-order", None),
+                mtu=nic.get("mtu", None),
             )
         else:
-            raise CliError(f"Preset {preset_name} is invalid")
+            raise CliError(f"Network interface type {nic_type} is unsupported")
 
     d.define()
 

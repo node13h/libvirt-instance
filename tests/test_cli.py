@@ -36,10 +36,10 @@ def test_parse_disk_spec_invalid():
         cli.parse_disk_spec("test,key=value")
 
 
-def test_parse_nic_spec():
-    assert cli.parse_nic_spec("test,key=value") == ("test", {"key": "value"})
+def test_parse_generic_spec():
+    assert cli.parse_generic_spec("test,key=value") == ("test", {"key": "value"})
 
 
-def test_parse_nic_spec_invalid():
+def test_parse_generic_spec_invalid():
     with pytest.raises(ValueError):
-        cli.parse_nic_spec("")
+        cli.parse_generic_spec("")
