@@ -1,5 +1,6 @@
 import argparse
 import importlib.metadata
+import json
 import logging
 import sys
 import uuid
@@ -331,7 +332,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
     d.define()
 
-    # TODO: Output UUID
+    print(json.dumps({"instance-id": instance_id}, indent=2))
 
 
 def main() -> None:
