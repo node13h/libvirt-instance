@@ -100,3 +100,58 @@ preset:
     )
     with pytest.raises(config.InvalidPresetError):
         config.Config(f)
+
+
+def test_config_yaml():
+    f = StringIO(
+        """---
+preset:
+  domain:
+    test1:
+      arch-name: x86_64
+      machine-type: pc
+      xml: |
+        <domain>
+        </domain>
+"""
+    )
+
+    default_config = {
+        "defaults": {
+            "cpu-model": None,
+            "domain-type": "kvm",
+        },
+        "preset": {
+            "domain": {
+                "test2": {
+                    "arch-name": "x86_64",
+                    "machine-type": "pc",
+                    "xml": "<domain>\n</domain>\n",
+                }
+            },
+        },
+    }
+
+    c = config.Config(f, default_config=default_config)
+
+    assert (
+        c.yaml
+        == """defaults:
+  cpu-model: null
+  domain-type: kvm
+preset:
+  domain:
+    test1:
+      arch-name: x86_64
+      machine-type: pc
+      xml: |
+        <domain>
+        </domain>
+    test2:
+      arch-name: x86_64
+      machine-type: pc
+      xml: |
+        <domain>
+        </domain>
+"""
+    )

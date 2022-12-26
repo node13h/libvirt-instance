@@ -94,6 +94,8 @@ def parse_args() -> argparse.Namespace:
 
     subparsers.add_parser("get-domain-presets", help="list all domain presets")
 
+    subparsers.add_parser("get-config", help="show current config")
+
     parser_create = subparsers.add_parser("create", help="create a VM")
 
     parser_create.add_argument("name", help="VM name")
@@ -181,6 +183,10 @@ def cmd_get_domain_presets(args: argparse.Namespace, config: Config):
         )
 
     print(output.formatted(result, args.output_format))
+
+
+def cmd_get_config(args: argparse.Namespace, config: Config):
+    print(config.yaml)
 
 
 def cmd_create(args: argparse.Namespace, config: Config):
@@ -380,6 +386,8 @@ def main() -> None:
             print(importlib.metadata.version("libvirt-instance"))
         elif args.command == "get-domain-presets":
             cmd_get_domain_presets(args, config)
+        elif args.command == "get-config":
+            cmd_get_config(args, config)
         elif args.command == "create":
             cmd_create(args, config)
     except CliError as e:

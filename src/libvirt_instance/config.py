@@ -1,7 +1,57 @@
+import copy
 import importlib.resources
 from typing import Any, Optional, TextIO
 
 import yaml
+
+
+class xml_str(str):
+    pass
+
+
+def yaml_xml_str_representer(dumper, data):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+
+
+yaml.representer.SafeRepresenter.add_representer(xml_str, yaml_xml_str_representer)
+
+
+DEFAULT_CONFIG: dict[str, dict] = {
+    "defaults": {
+        "cpu-model": None,  # passthrough
+        "domain-type": "kvm",
+    },
+    "preset": {
+        "domain": {
+            "headless-server-x86_64": {
+                "arch-name": "x86_64",
+                "machine-type": "pc",
+                "xml": xml_str(
+                    (
+                        importlib.resources.files("libvirt_instance")
+                        / "domain-presets"
+                        / "headless-server-x86_64.xml"
+                    ).read_text()
+                ),
+            },
+        },
+        "disk": {
+            "local": {
+                "type": "volume",
+                "pool": "default",
+                "bus": "virtio",
+                "cache": "none",
+            }
+        },
+        "interface": {
+            "nat": {
+                "type": "network",
+                "model-type": "virtio",
+                "network": "default",
+            }
+        },
+    },
+}
 
 
 class ConfigError(Exception):
@@ -21,46 +71,12 @@ class InvalidPresetError(ConfigError):
 
 
 class Config:
-    def __init__(self, config_file_object: Optional[TextIO] = None) -> None:
-        self._config: dict[str, dict] = {
-            "defaults": {
-                "cpu-model": None,  # passthrough
-                "domain-type": "kvm",
-            },
-            "preset": {
-                "domain": {
-                    "headless-server-x86_64": {
-                        "arch-name": "x86_64",
-                        "machine-type": "pc",
-                    },
-                },
-                "disk": {
-                    "local": {
-                        "type": "volume",
-                        "pool": "default",
-                        "bus": "virtio",
-                        "cache": "none",
-                    }
-                },
-                "interface": {
-                    "nat": {
-                        "type": "network",
-                        "model-type": "virtio",
-                        "network": "default",
-                    }
-                },
-            },
-        }
-
-        for domain_preset in ("headless-server-x86_64",):
-            resource = (
-                importlib.resources.files("libvirt_instance")
-                / "domain-presets"
-                / f"{domain_preset}.xml"
-            )
-            self._config["preset"]["domain"][domain_preset][
-                "xml"
-            ] = resource.read_text()
+    def __init__(
+        self,
+        config_file_object: Optional[TextIO] = None,
+        default_config: dict[str, dict] = DEFAULT_CONFIG,
+    ) -> None:
+        self._config = copy.deepcopy(default_config)
 
         if config_file_object is not None:
             user_config = yaml.safe_load(config_file_object)
@@ -72,19 +88,29 @@ class Config:
                 for preset_name, preset in user_config_presets.items():
                     self._config["preset"][preset_type][preset_name] = preset
 
-        for preset_type in ("domain",):
-            for preset_name, preset in self._config["preset"][preset_type].items():
-                for key in ("machine-type", "arch-name", "xml"):
-                    if key not in preset:
-                        raise InvalidPresetError(
-                            f'Preset {preset_type}/{preset_name} is missing a value for "{key}"'
-                        )
+        # Validation and corrections
+        for preset_name, preset in self._config["preset"]["domain"].items():
+            for key in ("machine-type", "arch-name", "xml"):
+                if key not in preset:
+                    raise InvalidPresetError(
+                        f'Preset domain/{preset_name} is missing a value for "{key}"'
+                    )
+
+            # Wrap the XML into xml_str type for better formatting
+            # in self.yaml().
+            if "xml" in preset:
+                s = preset["xml"]
+                preset["xml"] = xml_str(s)
 
         # TODO: More preset validation.
 
     @property
     def config(self):
         return self._config
+
+    @property
+    def yaml(self):
+        return yaml.safe_dump(self._config, indent=2, sort_keys=True)
 
     def get_defaults(self, key: str) -> Optional[str]:
         return self._config["defaults"].get(key, None)
