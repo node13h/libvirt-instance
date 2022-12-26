@@ -21,7 +21,7 @@ class virStorageVol(object):
 
         pool_type = _pool._xml_el.get("type")
 
-        if pool_type == "dir":
+        if pool_type in ("dir", "logical"):
             target_path_el.text = "/".join(
                 [_pool._xml_el.find("./target/path").text, self.name()]
             )
@@ -123,6 +123,24 @@ class virConnect:
 </pool>"""
 
         self._pools["default"] = virStoragePool(_xml=default_pool_xml)
+
+        logical_pool_xml = """
+<pool type='logical'>
+  <name>scratch</name>
+  <uuid>cfbf8539-b6e4-46cd-a389-fc0afc2dd089</uuid>
+  <capacity unit='bytes'>500057505792</capacity>
+  <allocation unit='bytes'>0</allocation>
+  <available unit='bytes'>500057505792</available>
+  <source>
+    <name>scratch</name>
+    <format type='lvm2'/>
+  </source>
+  <target>
+    <path>/dev/scratch</path>
+  </target>
+</pool>"""
+
+        self._pools["logical"] = virStoragePool(_xml=logical_pool_xml)
 
         ceph_pool_xml = """
 <pool type='rbd'>

@@ -809,6 +809,38 @@ def test_domain_add_disk_unsupported_volume_type():
         d.add_disk(v)
 
 
+def test_domain_add_disk_logical():
+    domainxml = "<domain></domain>"
+
+    conn = virConnect()
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=conn,
+        basexml=domainxml,
+    )
+
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=conn,
+        pool_name="logical",
+    )
+
+    d.add_disk(v)
+
+    domain_el = ET.fromstring(str(d))
+
+    disk_el = domain_el.find("./devices/disk")
+
+    assert disk_el is not None
+
+    assert disk_el.get("type") == "volume"
+    assert disk_el.get("device") == "disk"
+
+
 def test_domain_add_disk_rbd():
     domainxml = "<domain></domain>"
 

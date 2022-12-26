@@ -424,7 +424,7 @@ class DomainDefinition:
 
         disk_el = ET.Element("disk")
 
-        if volume.pool_type == "dir":
+        if volume.pool_type in ("dir", "logical"):
             disk_el.set("type", "volume")
             disk_el.set("device", "disk")
 
