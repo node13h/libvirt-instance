@@ -8,9 +8,7 @@ from libvirt_instance import config
 def test_default_config():
     c = config.Config()
 
-    domain_preset = c.get_defaults("domain-preset")
-    assert len(domain_preset) > 0
-    assert len(c.get_preset("domain", domain_preset)["xml"]) > 0
+    assert len(c.get_preset("domain", "headless-server-x86_64")["xml"]) > 0
 
 
 def test_yaml_config():
@@ -21,6 +19,8 @@ defaults:
 preset:
   domain:
     empty:
+      arch-name: x86_64
+      machine-type: pc
       xml: "<domain></domain>"
 """
     )
@@ -37,13 +37,17 @@ def test_builtin_setting_override():
         """---
 preset:
   domain:
-    linux-server:
+    headless-server-x86_64:
+      arch-name: x86_64
+      machine-type: pc
       xml: "<domain></domain>"
 """
     )
     c = config.Config(f)
 
-    assert c.get_preset("domain", "linux-server")["xml"] == "<domain></domain>"
+    assert (
+        c.get_preset("domain", "headless-server-x86_64")["xml"] == "<domain></domain>"
+    )
 
 
 def test_non_existing_default():
@@ -94,7 +98,5 @@ preset:
     test: {}
 """
     )
-    c = config.Config(f)
-
     with pytest.raises(config.InvalidPresetError):
-        c.get_preset("domain", "test")
+        config.Config(f)

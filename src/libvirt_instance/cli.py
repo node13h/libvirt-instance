@@ -1,6 +1,5 @@
 import argparse
 import importlib.metadata
-import json
 import logging
 import sys
 import uuid
@@ -10,7 +9,7 @@ from typing import Any, Optional
 import libvirt  # type: ignore
 import yaml
 
-from libvirt_instance import seed_image, util
+from libvirt_instance import output, seed_image, util
 from libvirt_instance.config import Config
 from libvirt_instance.domain import DomainDefinition, Volume
 
@@ -73,6 +72,10 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--output-format", default="json", choices=("json",), help="output format"
+    )
+
+    parser.add_argument(
         "--config-file",
         type=Path,
         default=Path("/etc/libvirt-instance.conf"),
@@ -83,9 +86,13 @@ def parse_args() -> argparse.Namespace:
         "--connect", "-c", default="qemu:///system", help="libvirt connection string"
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="sub-command help")
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="sub-command help"
+    )
 
     subparsers.add_parser("version", help="show version")
+
+    subparsers.add_parser("get-domain-presets", help="list all domain presets")
 
     parser_create = subparsers.add_parser("create", help="create a VM")
 
@@ -158,22 +165,43 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def cmd_get_domain_presets(args: argparse.Namespace, config: Config):
+    result: dict[str, list] = {}
+
+    for preset_name, preset in config.config["preset"]["domain"].items():
+        arch_name = preset["arch-name"]
+        if arch_name not in result:
+            result[arch_name] = []
+
+        result[arch_name].append(
+            {
+                "preset-name": preset_name,
+                "machine-type": preset["machine-type"],
+            }
+        )
+
+    print(output.formatted(result, args.output_format))
+
+
 def cmd_create(args: argparse.Namespace, config: Config):
     instance_id = str(uuid.uuid4())
 
     cpu_model = args.cpu_model or config.get_defaults("cpu-model")
-    arch_name = args.arch_name or config.get_defaults("arch-name")
-    if not arch_name:
-        raise CliError("Please provide architecture name")
-    machine_type = args.machine_type or config.get_defaults("machine-type")
-    if not machine_type:
-        raise CliError("Please provide machine type")
+
     domain_type = args.domain_type or config.get_defaults("domain-type")
     if not domain_type:
         raise CliError("Please provide domain type")
-    domain_preset = args.domain_preset or config.get_defaults("domain-preset")
-    if not domain_preset:
-        raise CliError("Please select a domain preset to base the VM on")
+
+    domain_preset_name = args.domain_preset or config.get_defaults("domain-preset")
+    if not domain_preset_name:
+        raise CliError(
+            "Please use --domain-preset to select a domain preset to base the VM on"
+        )
+
+    domain_preset = config.get_preset("domain", domain_preset_name)
+
+    machine_type = args.machine_type or domain_preset["machine-type"]
+    arch_name = args.arch_name or domain_preset["arch-name"]
 
     # Resolve preset names and arguments in advance for implied validation.
     disks = []
@@ -261,7 +289,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
         args.name,
         ram_bytes=args.memory,
         vcpus=args.vcpu,
-        basexml=config.get_preset("domain", args.domain_preset)["xml"],
+        basexml=domain_preset["xml"],
         libvirt_conn=conn,
         domain_type=domain_type,
         machine=machine_type,
@@ -332,7 +360,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
     d.define()
 
-    print(json.dumps({"instance-id": instance_id}, indent=2))
+    print(output.formatted({"instance-id": instance_id}, args.output_format))
 
 
 def main() -> None:
@@ -350,6 +378,8 @@ def main() -> None:
     try:
         if args.command == "version":
             print(importlib.metadata.version("libvirt-instance"))
+        elif args.command == "get-domain-presets":
+            cmd_get_domain_presets(args, config)
         elif args.command == "create":
             cmd_create(args, config)
     except CliError as e:

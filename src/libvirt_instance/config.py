@@ -24,15 +24,15 @@ class Config:
     def __init__(self, config_file_object: Optional[TextIO] = None) -> None:
         self._config: dict[str, dict] = {
             "defaults": {
-                "cpu-model": None,  # Passthrough
-                "arch-name": "x86_64",
-                "machine-type": "pc",
+                "cpu-model": None,  # passthrough
                 "domain-type": "kvm",
-                "domain-preset": "linux-server",
             },
             "preset": {
                 "domain": {
-                    "linux-server": {},
+                    "headless-server-x86_64": {
+                        "arch-name": "x86_64",
+                        "machine-type": "pc",
+                    },
                 },
                 "disk": {
                     "local": {
@@ -52,7 +52,7 @@ class Config:
             },
         }
 
-        for domain_preset in ("linux-server",):
+        for domain_preset in ("headless-server-x86_64",):
             resource = (
                 importlib.resources.files("libvirt_instance")
                 / "domain-presets"
@@ -67,10 +67,24 @@ class Config:
 
             self._config["defaults"].update(user_config.get("defaults", {}))
 
-            for key in ("domain", "disk", "interface"):
-                user_config_presets = user_config.get("preset", {}).get(key, {})
+            for preset_type in ("domain", "disk", "interface"):
+                user_config_presets = user_config.get("preset", {}).get(preset_type, {})
                 for preset_name, preset in user_config_presets.items():
-                    self._config["preset"][key][preset_name] = preset
+                    self._config["preset"][preset_type][preset_name] = preset
+
+        for preset_type in ("domain",):
+            for preset_name, preset in self._config["preset"][preset_type].items():
+                for key in ("machine-type", "arch-name", "xml"):
+                    if key not in preset:
+                        raise InvalidPresetError(
+                            f'Preset {preset_type}/{preset_name} is missing a value for "{key}"'
+                        )
+
+        # TODO: More preset validation.
+
+    @property
+    def config(self):
+        return self._config
 
     def get_defaults(self, key: str) -> Optional[str]:
         return self._config["defaults"].get(key, None)
@@ -87,13 +101,5 @@ class Config:
             raise PresetNotFoundError(
                 f"Preset {preset_type}/{preset_name} not found in the config"
             )
-
-        if preset_type == "domain":
-            if "xml" not in preset:
-                raise InvalidPresetError(
-                    f"Preset {preset_type}/{preset_name} is missing XML"
-                )
-
-        # TODO: More preset validation.
 
         return preset
