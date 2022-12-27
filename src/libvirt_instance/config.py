@@ -101,17 +101,20 @@ class Config:
 
         # Validation and corrections
         for preset_name, preset in self._config["preset"]["domain"].items():
+            if "xml-file" in preset:
+                with open(preset["xml-file"], "r") as fp:
+                    preset["xml"] = xml_str(fp.read())
+            # Wrap the XML into xml_str type for better formatting
+            # in self.yaml().
+            elif "xml" in preset:
+                s = preset["xml"]
+                preset["xml"] = xml_str(s)
+
             for key in ("machine-type", "arch-name", "xml"):
                 if key not in preset:
                     raise InvalidPresetError(
                         f'Preset domain/{preset_name} is missing a value for "{key}"'
                     )
-
-            # Wrap the XML into xml_str type for better formatting
-            # in self.yaml().
-            if "xml" in preset:
-                s = preset["xml"]
-                preset["xml"] = xml_str(s)
 
         # TODO: More preset validation.
 

@@ -1,4 +1,6 @@
+import tempfile
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
@@ -15,7 +17,7 @@ def test_yaml_config():
     f = StringIO(
         """---
 defaults:
-  domain-preset: empty
+  domain-type: qemu
 preset:
   domain:
     empty:
@@ -26,8 +28,8 @@ preset:
     )
     c = config.Config(f)
 
-    domain_preset = c.get_defaults("domain-preset")
-    assert domain_preset == "empty"
+    domain_preset = c.get_defaults("domain-type")
+    assert domain_preset == "qemu"
 
     assert c.get_preset("domain", "empty")["xml"] == "<domain></domain>"
 
@@ -155,3 +157,39 @@ preset:
         </domain>
 """
     )
+
+
+def test_xml_file():
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        xml_file = Path(temp_dir) / "base.xml"
+
+        with open(xml_file, "w") as fp:
+            fp.write("<domain>\n</domain>")
+
+        f = StringIO(
+            f"""---
+defaults:
+  cpu-model: null
+  domain-type: kvm
+preset:
+  domain:
+    test:
+      arch-name: x86_64
+      machine-type: pc
+      xml-file: "{xml_file}"
+"""
+        )
+
+        default_config = {
+            "defaults": {},
+            "preset": {
+                "domain": {},
+                "disk": {},
+                "interface": {},
+            },
+        }
+
+        c = config.Config(f, default_config=default_config)
+
+    assert c.get_preset("domain", "test")["xml"] == "<domain>\n</domain>"
