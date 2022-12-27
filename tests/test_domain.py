@@ -397,7 +397,6 @@ def test_domain_init_custom_cpu():
 
     assert cpu_el.get("mode") == "custom"
     assert cpu_el.get("match") == "exact"
-    assert cpu_el.get("check") == "partial"
 
     assert cpu_model_el.text == "SandyBridge"
     assert cpu_model_el.get("fallback") == "allow"

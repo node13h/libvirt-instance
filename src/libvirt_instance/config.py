@@ -34,6 +34,17 @@ DEFAULT_CONFIG: dict[str, dict] = {
                     ).read_text()
                 ),
             },
+            "headless-server-aarch64": {
+                "arch-name": "aarch64",
+                "machine-type": "virt",
+                "xml": xml_str(
+                    (
+                        importlib.resources.files("libvirt_instance")
+                        / "domain-presets"
+                        / "headless-server-aarch64.xml"
+                    ).read_text()
+                ),
+            },
         },
         "disk": {
             "local": {

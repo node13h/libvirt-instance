@@ -223,7 +223,6 @@ class DomainDefinition:
             cpu_el = ET.SubElement(self._domain_el, "cpu")
             cpu_el.set("mode", "custom")
             cpu_el.set("match", "exact")
-            cpu_el.set("check", "partial")
 
             cpu_model_el = ET.SubElement(cpu_el, "model")
             cpu_model_el.set("fallback", "allow")
