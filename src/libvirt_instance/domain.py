@@ -1,3 +1,6 @@
+# MIT license
+# Copyright 2022 Sergej Alikov <sergej.alikov@gmail.com>
+
 import logging
 import xml.etree.ElementTree as ET
 from typing import BinaryIO, Optional

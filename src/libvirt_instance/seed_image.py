@@ -1,3 +1,6 @@
+# MIT license
+# Copyright 2022 Sergej Alikov <sergej.alikov@gmail.com>
+
 # See https://cloudinit.readthedocs.io/en/latest/topics/datasources/nocloud.html
 
 from io import BytesIO

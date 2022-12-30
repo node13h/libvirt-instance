@@ -1,3 +1,6 @@
+# MIT license
+# Copyright 2022 Sergej Alikov <sergej.alikov@gmail.com>
+
 import copy
 import importlib.resources
 from typing import Any, Optional, TextIO

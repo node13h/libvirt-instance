@@ -1,3 +1,6 @@
+# MIT license
+# Copyright 2022 Sergej Alikov <sergej.alikov@gmail.com>
+
 import re
 from string import ascii_lowercase
 

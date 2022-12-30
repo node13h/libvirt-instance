@@ -1,3 +1,6 @@
+# MIT license
+# Copyright 2022 Sergej Alikov <sergej.alikov@gmail.com>
+
 import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
