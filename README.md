@@ -22,6 +22,14 @@ implement that so far. Any delete operations can be performed using `virsh`.
 
 ## Installation
 
+This package depends on `libvirt-python`. Installing into a virtualenv might
+require GCC, Python3 and Libvirt development OS packages to be installed.
+Run `dnf --enablerepo=devel install gcc python3-devel libvirt-devel` to install
+those packages if you're using RockyLinux 9.
+
+Otherwise (when not using virtualenv), having the `python3-libvirt` OS package
+installed should be sufficient.
+
 `libvirt-instance` can be installed by running `pip3 install libvirt-instance`.
 It requires Python 3.9+ to run.
 
