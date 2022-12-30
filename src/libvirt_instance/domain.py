@@ -3,10 +3,9 @@
 
 import logging
 import xml.etree.ElementTree as ET
-from typing import BinaryIO, Optional
+from typing import Any, BinaryIO, Optional
 
 import libvirt  # type: ignore
-from typing_extensions import TypedDict
 
 from libvirt_instance.util import index_to_drive_name
 
@@ -15,8 +14,7 @@ logger = logging.getLogger(__name__)
 DISK_BUS_VIRTIO = "virtio"
 DISK_BUS_SCSI = "scsi"
 
-DiskBusProperties = TypedDict("DiskBusProperties", {"dev_prefix": str, "max_nr": int})
-DISK_BUS_PROPERTIES: dict[str, DiskBusProperties] = {
+DISK_BUS_PROPERTIES: dict[str, Any] = {
     DISK_BUS_VIRTIO: {
         "dev_prefix": "vd",
         "max_nr": 32,  # https://rwmj.wordpress.com/2010/12/22/whats-the-maximum-number-of-virtio-blk-disks/
