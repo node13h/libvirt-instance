@@ -46,21 +46,8 @@ DEFAULT_CONFIG: dict[str, dict] = {
                 ),
             },
         },
-        "disk": {
-            "local": {
-                "type": "volume",
-                "pool": "default",
-                "bus": "virtio",
-                "cache": "none",
-            }
-        },
-        "interface": {
-            "nat": {
-                "type": "network",
-                "model-type": "virtio",
-                "network": "default",
-            }
-        },
+        "disk": {},
+        "interface": {},
     },
 }
 
