@@ -39,8 +39,6 @@ addopts = [
 [tool.coverage.run]
 source = ["src"]
 
-# TODO mypy
-
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
