@@ -1,4 +1,7 @@
-.PHONY: reformat lint test typecheck all-tests build
+.PHONY: develop reformat lint test typecheck all-tests build
+
+develop:
+	poetry install
 
 reformat:
 	poetry run black .
