@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config-file",
         type=Path,
-        default=Path("/etc/libvirt-instance.conf"),
+        default=Path("/etc/libvirt-instance-config.yaml"),
         help="location of the configuration file",
     )
 
