@@ -345,7 +345,8 @@ it makes more sense to specify any MAC addresses on the command line
 
 ## CLI options
 
-See `libvirt-instance --help` for the full list of CLI options.
+See `libvirt-instance --help` and `libvirt-instance create --help` for the full
+list of CLI options.
 There are also some examples in the "Showcase" and "More examples" sections
 illustrating how different options work together.
 
