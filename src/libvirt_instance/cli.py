@@ -243,7 +243,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
             if key in kwargs:
                 nic[key] = int(kwargs[key])
 
-        nics.append((preset, kwargs))
+        nics.append((nic, kwargs))
 
     seed_disk: Optional[dict[str, Any]]
 
