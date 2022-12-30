@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "VM provisioning and management tool"
 authors = ["Sergej Alikov <sergej@alikov.com>"]
 license = "MIT"
+repository = "https://github.com/node13h/libvirt-instance"
 readme = "README.md"
 packages = [
   { include = "libvirt_instance", from = "src" }
