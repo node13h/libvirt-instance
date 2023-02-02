@@ -313,7 +313,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
         if disk_type == "volume":
             v = Volume(
                 disk["name"],
-                create_size_bytes=disk_size,
+                create_size_bytes=disk["size"],
                 libvirt_conn=conn,
                 pool_name=disk["pool"],
                 source_name=disk.get("source", None),
