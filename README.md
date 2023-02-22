@@ -150,7 +150,7 @@ virsh -c "$URI" undefine "$instance_id" --nvram --remove-all-storage
 
 Creating non-image-based VMs is also an option.
 
-This example creates a VM with two disks and the PXE boot as the first option:
+### VM with two disks and the PXE boot as the first option
 
 ```shell
 libvirt-instance -c "$URI" --config-file ./libvirt-instance-config.yaml create \
@@ -169,7 +169,33 @@ with two built-in domain presets - `headless-server-x86_64` and
 
 Run `libvirt-instance get-config` to see the currently-defined presets.
 
-The following example deploys an ARM cloud image-based Fedora VM on a non-ARM KVM host:
+### VM with encrypted disks
+
+```shell
+cat <<EOF >./secret.xml
+<secret ephemeral='no' private='yes'>
+  <uuid>8eb167eb-b3bb-4047-91f4-a3ca1eb643ab</uuid>
+</secret>
+EOF
+
+virsh -c "$URI" secret-define ./secret.xml
+
+virsh -c "$URI" secret-set-value 8eb167eb-b3bb-4047-91f4-a3ca1eb643ab --interactive
+# Enter new value for secret:
+
+# encryption-secret could also be specified in a preset in libvirt-instance-config.yaml.
+libvirt-instance -c "$URI" --config-file ./libvirt-instance-config.yaml create \
+                 --domain-preset headless-server-x86_64 \
+                 --memory 2GiB \
+                 --vcpu 2 \
+                 --disk local,5GiB,encryption-secret=8eb167eb-b3bb-4047-91f4-a3ca1eb643ab \
+                 --disk local,10GiB,encryption-secret=8eb167eb-b3bb-4047-91f4-a3ca1eb643ab \
+                 --nic nat \
+                 myvm
+```
+
+
+### ARM cloud image-based Fedora VM on a non-ARM KVM host
 
 ```shell
 curl -LfsS \
@@ -261,9 +287,18 @@ preset:
       pool: ceph-rbd
       bus: virtio
       cache: writeback
+    local-secure:
+      type: volume
+      pool: images
+      bus: virtio
+      cache: none
+      encryption-format: luks
+      encryption-secret: 8eb167eb-b3bb-4047-91f4-a3ca1eb643ab
+      encryption-cipher: aes-256-cbc-sha256
+      encryption-ivgen: essiv-sha256
     x86worker:
       type: volume
-      pool: local-lvm1
+      pool: images
       bus: virtio
       cache: none
       source: fedora37-cloud-amd64.raw
@@ -279,16 +314,34 @@ The only supported value for `type` is `volume` at the moment.
 used to pull any information about volumes when adding disk devices to the
 domain XML.
 
-`bus` is either `virtio` for virtio-blk disks, or `scsi` for virtio-scsi disks.
+`bus` (optional) is either `virtio` for virtio-blk disks, or `scsi` for
+virtio-scsi disks. Defaults to `virtio`.
 
-`cache` specifies any disk cache mode supported by Libvirt.
+`cache` (optional) specifies any disk cache mode supported by Libvirt.
+defaults to `none`.
 
-`source` specifies a Libvirt volume containing the base image for disks.
+`source` (optional) specifies a Libvirt volume containing the base image for
+disks.
 
-`source-pool` specifies the Libvirt pool for the `source` image. Defaults to the
-same value as `pool` when not specified.
+`source-pool` (optional) specifies the Libvirt pool for the `source` image.
+Defaults to the same value as `pool` when not specified.
 
-`boot-order` sets the device position in the boot order.
+`boot-order` (optional) sets the device position in the boot order.
+
+`encryption-secret` (optional) specified a Libvirt secret UUID, and enables
+disk encryption when set.
+
+`encryption-format` (optional) sets encryption format (default is `luks`).
+
+`encryption-cipher` (optional) specifies encryption cipher details. Format
+is `name-size-mode-hash`, for example `aes-128-cbc-sha256`.
+
+`encryption-ivgen` (optional) specifies the initialization vector generation
+algorithm. Format is `name-hash`, for example `essiv-sha256`.
+
+See
+[Libvirt Storage volume encryption XML format documentation](https://libvirt.org/formatstorageencryption.html)
+for more details about encryption parameters.
 
 In most cases, the resulting disk device description in the domain XML will be a
 volume reference (`<disk type="volume">`). Some pool types (`rbd` for instance)
@@ -325,21 +378,21 @@ preset:
 
 CLI examples for the above: `--nic nat`, `--nic dmz --nic storage`.
 
-`model-type` specifies any model type supported by Libvirt (e.g. `virtio`,
-`e1000`, `rtl8139`, etc).
+`model-type` (optional) specifies any model type supported by Libvirt
+(e.g. `virtio`, `e1000`, `rtl8139`, etc). Defaults to `virtio`.
 
 `network` specifies the Libvirt network name for `type: network` interfaces.
 
 `bridge` specifies the name of an existing network bridge for `type: bridge`
 interfaces.
 
-`mtu` sets the MTU on the host-side TAP interface. Note, the MTU also needs
-to be configured inside the guest.
+`mtu` (optional) sets the MTU on the host-side TAP interface.
+Note, the MTU also needs to be configured inside the guest.
 
-`boot-order` sets the device position in the boot order.
+`boot-order` (optional) sets the device position in the boot order.
 
-Technically, `mac-address` can also be specified in an interface preset, but
-it makes more sense to specify any MAC addresses on the command line
+Technically, `mac-address` (optional) can also be specified in an interface
+preset, but it makes more sense to specify any MAC addresses on the command line
 (e.g. `--nic nat,mac-address=00:11:22:33:44:55:66`).
 
 

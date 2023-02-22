@@ -61,6 +61,18 @@ def parse_generic_spec(spec: str) -> tuple:
     return args[0], kwargs
 
 
+def parse_cipher(cipher: str) -> dict:
+    name, size, mode, hash = cipher.split("-")
+
+    return {"name": name, "size": int(size), "mode": mode, "hash": hash}
+
+
+def parse_ivgen(ivgen: str) -> dict:
+    name, hash = ivgen.split("-")
+
+    return {"name": name, "hash": hash}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="libvirt-instance",
@@ -214,39 +226,51 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
     # Resolve preset names and arguments in advance for implied validation.
     disks = []
-    for i, (preset_name, disk_size, kwargs) in enumerate(args.disk):
-        preset = config.get_preset("disk", preset_name)
+    if args.disk:
+        for i, (preset_name, disk_size, kwargs) in enumerate(args.disk):
+            preset = config.get_preset("disk", preset_name)
 
-        disk = preset.copy()
+            disk = preset.copy()
 
-        disk["name"] = f"{args.name}-disk{i}"
-        disk["size"] = disk_size
+            disk["name"] = f"{args.name}-disk{i}"
+            disk["size"] = disk_size
 
-        for key in ("pool", "bus", "cache", "source", "source-pool"):
-            if key in kwargs:
-                disk[key] = kwargs[key]
+            for key in (
+                "pool",
+                "bus",
+                "cache",
+                "source",
+                "source-pool",
+                "encryption-format",
+                "encryption-secret",
+                "encryption-cipher",
+                "encryption-ivgen",
+            ):
+                if key in kwargs:
+                    disk[key] = kwargs[key]
 
-        for key in ("boot-order",):
-            if key in kwargs:
-                disk[key] = int(kwargs[key])
+            for key in ("boot-order",):
+                if key in kwargs:
+                    disk[key] = int(kwargs[key])
 
-        disks.append(disk)
+            disks.append(disk)
 
     nics = []
-    for preset_name, kwargs in args.nic:
-        preset = config.get_preset("interface", preset_name)
+    if args.nic:
+        for preset_name, kwargs in args.nic:
+            preset = config.get_preset("interface", preset_name)
 
-        nic = preset.copy()
+            nic = preset.copy()
 
-        for key in ("model-type", "network", "bridge", "mac-address"):
-            if key in kwargs:
-                nic[key] = kwargs[key]
+            for key in ("model-type", "network", "bridge", "mac-address"):
+                if key in kwargs:
+                    nic[key] = kwargs[key]
 
-        for key in ("boot-order", "mtu"):
-            if key in kwargs:
-                nic[key] = int(kwargs[key])
+            for key in ("boot-order", "mtu"):
+                if key in kwargs:
+                    nic[key] = int(kwargs[key])
 
-        nics.append((nic, kwargs))
+            nics.append((nic, kwargs))
 
     seed_disk: Optional[dict[str, Any]]
 
@@ -263,7 +287,15 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
         seed_disk = {}
 
-        for key in ("pool", "bus", "cache"):
+        for key in (
+            "pool",
+            "bus",
+            "cache",
+            "encryption-format",
+            "encryption-secret",
+            "encryption-cipher",
+            "encryption-ivgen",
+        ):
             seed_disk[key] = kwargs.get(key, preset[key])
 
         meta_data = {
@@ -318,6 +350,14 @@ def cmd_create(args: argparse.Namespace, config: Config):
                 pool_name=disk["pool"],
                 source_name=disk.get("source", None),
                 source_pool_name=disk.get("source-pool", None),
+                encryption_format=disk.get("encryption-format", None),
+                encryption_secret=disk.get("encryption-secret", None),
+                encryption_cipher=parse_cipher(disk["encryption-cipher"])
+                if "encryption-cipher" in disk
+                else None,
+                encryption_ivgen=parse_ivgen(disk["encryption-ivgen"])
+                if "encryption-ivgen" in disk
+                else None,
             )
 
             d.add_disk(
@@ -336,6 +376,14 @@ def cmd_create(args: argparse.Namespace, config: Config):
             create_size_bytes=seed_disk["size"],
             libvirt_conn=conn,
             pool_name=seed_disk["pool"],
+            encryption_format=seed_disk.get("encryption-format", None),
+            encryption_secret=seed_disk.get("encryption-secret", None),
+            encryption_cipher=parse_cipher(seed_disk["encryption-cipher"])
+            if "encryption-cipher" in seed_disk
+            else None,
+            encryption_ivgen=parse_ivgen(seed_disk["encryption-ivgen"])
+            if "encryption-ivgen" in seed_disk
+            else None,
         )
 
         v.upload(seed_disk["fp"], seed_disk["size"])
