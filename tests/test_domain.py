@@ -113,6 +113,99 @@ def test_volume_from_source():
     assert v.volume.name() == "testvolume2"
 
 
+def test_volume_encryption():
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=virConnect(),
+        pool_name="default",
+        encryption_format="luks",
+        encryption_secret="a826f98d-64dc-4352-a74c-bba051162c82",
+    )
+
+    volume_el = ET.fromstring(v.volume.XMLDesc())
+    encryption_el = volume_el.find("./target/encryption")
+
+    assert encryption_el.get("format") == "luks"
+    assert (
+        encryption_el.find("./secret").get("uuid")
+        == "a826f98d-64dc-4352-a74c-bba051162c82"
+    )
+
+    assert v.encryption_format == "luks"
+    assert v.encryption_secret == "a826f98d-64dc-4352-a74c-bba051162c82"
+
+
+def test_volume_encryption_from_no_enc_source():
+    conn = virConnect()
+
+    domain.Volume(
+        "testvolume1",
+        create_size_bytes=100000,
+        libvirt_conn=conn,
+        pool_name="default",
+    )
+
+    with pytest.raises(domain.SourceVolumeNotEncryptedError):
+        domain.Volume(
+            "testvolume",
+            create_size_bytes=16777216,
+            libvirt_conn=conn,
+            pool_name="default",
+            encryption_format="luks",
+            encryption_secret="a826f98d-64dc-4352-a74c-bba051162c82",
+            source_name="testvolume1",
+        )
+
+
+def test_volume_encryption_enc_source_no_secret():
+    conn = virConnect()
+
+    domain.Volume(
+        "testvolume1",
+        create_size_bytes=100000,
+        libvirt_conn=conn,
+        pool_name="default",
+        encryption_format="luks",
+        encryption_secret="a826f98d-64dc-4352-a74c-bba051162c82",
+    )
+
+    with pytest.raises(domain.SourceVolumeEncryptedButNoSecretError):
+        domain.Volume(
+            "testvolume",
+            create_size_bytes=16777216,
+            libvirt_conn=conn,
+            pool_name="default",
+            source_name="testvolume1",
+        )
+
+
+def test_volume_cipher():
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=virConnect(),
+        pool_name="default",
+        encryption_format="luks",
+        encryption_secret="a826f98d-64dc-4352-a74c-bba051162c82",
+        encryption_cipher={"name": "aes", "size": 128, "mode": "cbc", "hash": "sha256"},
+        encryption_ivgen={"name": "essiv", "hash": "sha256"},
+    )
+
+    volume_el = ET.fromstring(v.volume.XMLDesc())
+    encryption_el = volume_el.find("./target/encryption")
+    cipher_el = encryption_el.find("./cipher")
+    ivgen_el = encryption_el.find("./ivgen")
+
+    assert cipher_el.get("name") == "aes"
+    assert cipher_el.get("size") == "128"
+    assert cipher_el.get("mode") == "cbc"
+    assert cipher_el.get("hash") == "sha256"
+
+    assert ivgen_el.get("name") == "essiv"
+    assert ivgen_el.get("hash") == "sha256"
+
+
 def test_domain_init():
     domainxml = """
     <domain>
@@ -767,6 +860,42 @@ def test_domain_add_disk_boot_order():
     assert disk_el is not None
 
     assert disk_el.find("./boot").get("order") == "1"
+
+
+def test_domain_add_disk_encryption():
+    domainxml = "<domain></domain>"
+
+    conn = virConnect()
+
+    d = domain.DomainDefinition(
+        "foo",
+        ram_bytes=16777216,
+        vcpus=1,
+        libvirt_conn=conn,
+        basexml=domainxml,
+    )
+
+    v = domain.Volume(
+        "testvolume",
+        create_size_bytes=16777216,
+        libvirt_conn=conn,
+        pool_name="default",
+        encryption_format="luks",
+        encryption_secret="a826f98d-64dc-4352-a74c-bba051162c82",
+    )
+
+    d.add_disk(v)
+
+    domain_el = ET.fromstring(str(d))
+
+    disk_el = domain_el.find("./devices/disk")
+    encryption_el = disk_el.find("./encryption")
+
+    assert encryption_el.get("format") == "luks"
+    assert (
+        encryption_el.find("./secret").get("uuid")
+        == "a826f98d-64dc-4352-a74c-bba051162c82"
+    )
 
 
 def test_domain_add_disk_unsupported_bus():

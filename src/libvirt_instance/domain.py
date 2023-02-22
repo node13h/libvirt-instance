@@ -46,6 +46,14 @@ class SourceVolumeTooBigError(Exception):
     pass
 
 
+class SourceVolumeNotEncryptedError(Exception):
+    pass
+
+
+class SourceVolumeEncryptedButNoSecretError(Exception):
+    pass
+
+
 class Volume:
     def __init__(
         self,
@@ -57,6 +65,10 @@ class Volume:
         libvirt_conn: libvirt.virConnect,
         source_pool_name: Optional[str] = None,
         source_name: Optional[str] = None,
+        encryption_format: Optional[str] = None,
+        encryption_secret: Optional[str] = None,
+        encryption_cipher: Optional[dict] = None,
+        encryption_ivgen: Optional[dict] = None,
     ) -> None:
 
         alignment_remainder = create_size_bytes % (2**20)
@@ -72,6 +84,9 @@ class Volume:
         self._conn = libvirt_conn
 
         self.name = name
+
+        self.encryption_format = encryption_format or "luks"
+        self.encryption_secret = encryption_secret
 
         self.pool = self._conn.storagePoolLookupByName(pool_name)
 
@@ -103,6 +118,32 @@ class Volume:
                 allocation_el.set("unit", "bytes")
                 allocation_el.text = str(volume_size_bytes)
 
+                if self.encryption_secret is not None:
+                    target_el = ET.SubElement(volume_el, "target")
+
+                    target_encryption_el = ET.SubElement(target_el, "encryption")
+                    target_encryption_el.set("format", self.encryption_format)
+
+                    encryption_secret_el = ET.SubElement(target_encryption_el, "secret")
+                    encryption_secret_el.set("type", "passphrase")
+                    encryption_secret_el.set("uuid", self.encryption_secret)
+
+                    if encryption_cipher is not None:
+                        encryption_cipher_el = ET.SubElement(
+                            target_encryption_el, "cipher"
+                        )
+                        encryption_cipher_el.set("name", encryption_cipher["name"])
+                        encryption_cipher_el.set("size", str(encryption_cipher["size"]))
+                        encryption_cipher_el.set("mode", encryption_cipher["mode"])
+                        encryption_cipher_el.set("hash", encryption_cipher["hash"])
+
+                    if encryption_ivgen is not None:
+                        encryption_ivgen_el = ET.SubElement(
+                            target_encryption_el, "ivgen"
+                        )
+                        encryption_ivgen_el.set("name", encryption_ivgen["name"])
+                        encryption_ivgen_el.set("hash", encryption_ivgen["hash"])
+
                 self.volume = self.pool.createXML(
                     ET.tostring(volume_el, encoding="unicode")
                 )
@@ -116,6 +157,23 @@ class Volume:
                     source_pool = self.pool
 
                 source_volume = source_pool.storageVolLookupByName(source_name)
+
+                source_volume_el = ET.fromstring(source_volume.XMLDesc())
+                source_encrypted = (
+                    source_volume_el.find("./target/encryption") is not None
+                )
+
+                if self.encryption_secret and not source_encrypted:
+                    raise SourceVolumeNotEncryptedError(
+                        f"Encryption requested, but source volume {source_name} "
+                        "is not encrypted."
+                    )
+
+                if source_encrypted and not self.encryption_secret:
+                    raise SourceVolumeEncryptedButNoSecretError(
+                        f"Source volume {source_name} is encrypted, but no "
+                        "secret was provided."
+                    )
 
                 _, source_volume_capacity, _ = source_volume.info()
 
@@ -540,6 +598,14 @@ class DomainDefinition:
             address_el.set("bus", str(scsi_bus))
             address_el.set("target", str(scsi_target))
             address_el.set("unit", str(scsi_unit))
+
+        if volume.encryption_secret is not None:
+            encryption_el = ET.SubElement(disk_el, "encryption")
+            encryption_el.set("format", volume.encryption_format)
+
+            encryption_secret_el = ET.SubElement(encryption_el, "secret")
+            encryption_secret_el.set("type", "passphrase")
+            encryption_secret_el.set("uuid", volume.encryption_secret)
 
         # TODO: Autogenerate disk serial numbers?
 

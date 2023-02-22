@@ -46,3 +46,16 @@ def test_parse_generic_spec():
 def test_parse_generic_spec_invalid():
     with pytest.raises(ValueError):
         cli.parse_generic_spec("")
+
+
+def test_parse_cipher():
+    assert cli.parse_cipher("aes-128-cbc-sha256") == {
+        "name": "aes",
+        "size": 128,
+        "mode": "cbc",
+        "hash": "sha256",
+    }
+
+
+def test_parse_ivgen():
+    assert cli.parse_ivgen("essiv-sha256") == {"name": "essiv", "hash": "sha256"}
