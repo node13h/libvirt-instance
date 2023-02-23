@@ -296,7 +296,10 @@ def cmd_create(args: argparse.Namespace, config: Config):
             "encryption-cipher",
             "encryption-ivgen",
         ):
-            seed_disk[key] = kwargs.get(key, preset[key])
+            if key in kwargs:
+                seed_disk[key] = kwargs[key]
+            elif key in preset:
+                seed_disk[key] = preset[key]
 
         meta_data = {
             "instance-id": instance_id,
