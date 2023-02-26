@@ -1,4 +1,7 @@
-.PHONY: develop reformat lint test typecheck all-tests build
+.PHONY: clean develop reformat lint test typecheck all-tests build
+
+clean:
+	rm -rf dist/
 
 develop:
 	poetry install
