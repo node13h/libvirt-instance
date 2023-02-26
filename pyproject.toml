@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "libvirt-instance"
-version = "0.1.4"
+version = "0.1.5"
 description = "VM provisioning and management tool"
 authors = ["Sergej Alikov <sergej@alikov.com>"]
 license = "MIT"
