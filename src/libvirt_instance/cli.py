@@ -295,10 +295,6 @@ def cmd_create(args: argparse.Namespace, config: Config):
             "pool",
             "bus",
             "cache",
-            "encryption-format",
-            "encryption-secret",
-            "encryption-cipher",
-            "encryption-ivgen",
         ):
             if key in kwargs:
                 seed_disk[key] = kwargs[key]
@@ -383,14 +379,6 @@ def cmd_create(args: argparse.Namespace, config: Config):
             create_size_bytes=seed_disk["size"],
             libvirt_conn=conn,
             pool_name=seed_disk["pool"],
-            encryption_format=seed_disk.get("encryption-format", None),
-            encryption_secret=seed_disk.get("encryption-secret", None),
-            encryption_cipher=parse_cipher(seed_disk["encryption-cipher"])
-            if "encryption-cipher" in seed_disk
-            else None,
-            encryption_ivgen=parse_ivgen(seed_disk["encryption-ivgen"])
-            if "encryption-ivgen" in seed_disk
-            else None,
         )
 
         v.upload(seed_disk["fp"], seed_disk["size"])

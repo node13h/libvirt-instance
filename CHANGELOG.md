@@ -5,6 +5,9 @@
 ### Added
 - Support for volume prefixes.
 
+### Fixed
+- Disable encryption config for unencrypted seed disks.
+
 ## [0.1.4] - 2023-02-23
 
 ### Fixed
