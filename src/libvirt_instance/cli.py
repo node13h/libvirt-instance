@@ -116,6 +116,10 @@ def parse_args() -> argparse.Namespace:
     parser_create.add_argument("name", help="VM name")
 
     parser_create.add_argument(
+        "--volume-name-prefix", default="", help="prefix to add to volume names"
+    )
+
+    parser_create.add_argument(
         "--cpu-model",
         help="virtual CPU model; defaults to host passthrough when not set",
     )
@@ -347,7 +351,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
         if disk_type == "volume":
             v = Volume(
-                disk["name"],
+                "{}{}".format(args.volume_name_prefix, disk["name"]),
                 create_size_bytes=disk["size"],
                 libvirt_conn=conn,
                 pool_name=disk["pool"],
@@ -375,7 +379,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
     if seed_disk is not None:
 
         v = Volume(
-            f"{args.name}-seed",
+            f"{args.volume_name_prefix}{args.name}-seed",
             create_size_bytes=seed_disk["size"],
             libvirt_conn=conn,
             pool_name=seed_disk["pool"],
