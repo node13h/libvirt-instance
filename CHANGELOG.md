@@ -4,6 +4,7 @@
 
 ### Added
 - Support for volume prefixes.
+- Support using existing volumes.
 
 ### Fixed
 - Disable encryption config for unencrypted seed disks.

@@ -257,6 +257,10 @@ def cmd_create(args: argparse.Namespace, config: Config):
                 if key in kwargs:
                     disk[key] = int(kwargs[key])
 
+            for key in ("exist-ok",):
+                if key in kwargs:
+                    disk[key] = kwargs[key].lower() == "true"
+
             disks.append(disk)
 
     nics = []
@@ -361,6 +365,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
                 encryption_ivgen=parse_ivgen(disk["encryption-ivgen"])
                 if "encryption-ivgen" in disk
                 else None,
+                exist_ok=disk.get("exist-ok", False),
             )
 
             d.add_disk(
