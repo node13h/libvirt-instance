@@ -172,6 +172,11 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser_create.add_argument(
+        "--cloud-hostname",
+        help="instance hostname; defaults to instance name when not set; needs --cloud-seed-disk",
+    )
+
+    parser_create.add_argument(
         "--cloud-user-data-file",
         type=Path,
         help="location of the cloud-init user-data file; needs --cloud-seed-disk",
@@ -307,7 +312,7 @@ def cmd_create(args: argparse.Namespace, config: Config):
 
         meta_data = {
             "instance-id": instance_id,
-            "local-hostname": args.name,
+            "local-hostname": args.cloud_hostname or args.name,
         }
         meta_data_body = yaml.dump(meta_data)
 
