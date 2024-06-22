@@ -364,12 +364,16 @@ def cmd_create(args: argparse.Namespace, config: Config):
                 source_pool_name=disk.get("source-pool", None),
                 encryption_format=disk.get("encryption-format", None),
                 encryption_secret=disk.get("encryption-secret", None),
-                encryption_cipher=parse_cipher(disk["encryption-cipher"])
-                if "encryption-cipher" in disk
-                else None,
-                encryption_ivgen=parse_ivgen(disk["encryption-ivgen"])
-                if "encryption-ivgen" in disk
-                else None,
+                encryption_cipher=(
+                    parse_cipher(disk["encryption-cipher"])
+                    if "encryption-cipher" in disk
+                    else None
+                ),
+                encryption_ivgen=(
+                    parse_ivgen(disk["encryption-ivgen"])
+                    if "encryption-ivgen" in disk
+                    else None
+                ),
                 exist_ok=disk.get("exist-ok", False),
             )
 
